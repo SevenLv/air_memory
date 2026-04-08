@@ -15,6 +15,7 @@ AIR_Memory 是一个为 AI Agent 设计的本地部署的记忆系统, AI Agent 
 ### 功能定义
 
 - AIR_Memory 应支持 macOS 和 Windows 操作系统的本地一键部署;
+- AIR_Memory 应提供完整的部署手册和用户手册供人类阅读;
 - AIR_Memory 在默认情况下应自启动;
 - AIR_Memory 向 AI Agent 提供接口, AI Agent 可以通过这个接口保存记忆;
 - AIR_Memory 向 AI Agent 提供接口, AI Agent 可以通过这个接口查询自己所需的相关记忆;
