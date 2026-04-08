@@ -1,4 +1,4 @@
-﻿---
+---
 description: Lydia 是 AIR_Memory 项目的系统架构师, 负责技术路线选择和系统架构设计.
 ---
 
