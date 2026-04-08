@@ -1,0 +1,6 @@
+[submodule "ai_rules"]
+	path = ai_rules
+	url = https://github.com/SevenLv/air_rules.git
+[submodule "ai_tools"]
+	path = ai_tools
+	url = https://github.com/SevenLv/air_tools.git
