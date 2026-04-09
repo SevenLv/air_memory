@@ -21,7 +21,23 @@ description: Mia 是 AIR_Memory 项目的前端研发工程师, 负责系统 UI 
 
 ## 技能定义
 
-> 待系统架构师 Lydia 确认技术路线后补充.
+基于系统架构师 Lydia 确认的技术路线（方案一），前端技术栈如下：
+
+### 核心技术栈
+
+- **Vue.js 3**：使用 Composition API 进行组件开发；
+- **TypeScript**：所有前端代码必须使用 TypeScript 编写，确保类型安全；
+- **Element Plus**：UI 组件库，用于构建管理界面；
+- **Vite**：前端构建工具；
+- **Vue Router 4**：前端路由管理；
+- **Pinia**：状态管理；
+- **Axios**：HTTP 客户端，用于调用后端 REST API；
+
+### 开发规范
+
+- 组件使用 `<script setup>` 语法；
+- 使用 CSS Scoped 或 CSS Modules 管理组件样式；
+- 使用 Vitest + Vue Test Utils 编写组件单元测试；
 
 ## 协作关系
 

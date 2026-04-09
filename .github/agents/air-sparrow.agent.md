@@ -21,7 +21,26 @@ description: Sparrow 是 AIR_Memory 项目的测试工程师, 负责系统单元
 
 ## 技能定义
 
-> 待系统架构师 Lydia 确认技术路线后补充.
+基于系统架构师 Lydia 确认的技术路线（方案一），测试技术栈如下：
+
+### 核心技术栈
+
+**后端测试：**
+- **pytest**：Python 单元测试框架；
+- **pytest-asyncio**：用于测试 FastAPI 异步接口；
+- **httpx**：配合 FastAPI `TestClient` 进行接口集成测试；
+- **coverage.py**：Python 代码覆盖率统计；
+
+**前端测试：**
+- **Vitest**：Vue.js 3 生态的单元测试框架；
+- **Vue Test Utils**：Vue 组件单元测试工具；
+- **@testing-library/vue**：用于以用户行为为中心的组件测试；
+
+### 开发规范
+
+- 单元测试必须覆盖核心功能路径（记忆存储、记忆查询、日志记录）和边界条件；
+- 后端 API 测试须验证响应时间满足 ≤ 100ms 的性能要求；
+- 测试用例须与被测代码模块对应，命名规范遵循 `test_<模块名>.py`（后端）和 `<组件名>.test.ts`（前端）；
 
 ## 协作关系
 
