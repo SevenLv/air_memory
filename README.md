@@ -1,4 +1,4 @@
-﻿# air_memory
+﻿# AIR Memory
 Memory System for AI Agent
 
 ## 重要说明
