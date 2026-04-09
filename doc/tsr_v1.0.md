@@ -5,6 +5,7 @@
 | 版本号 | 变更时间 | 变更内容 |
 | --- | --- | --- |
 | 1.0 | 2026-4-9 | 初稿 |
+| 1.1 | 2026-4-9 | 项目经理审批通过，确认选用方案一；更新选型结论 |
 
 ## 1. 技术需求分析
 
@@ -294,13 +295,30 @@ AI Agent
 
 ---
 
-## 7. 待项目经理审批事项
+## 7. 选型结论
 
-本技术路线选型报告提交项目经理审批，以下重大决策需获得批准后方可进入架构设计阶段：
+**项目经理已审批通过，正式采用方案一（Python 生态全栈方案）。**
 
-1. **部署方式确认**：是否接受 Docker 作为必要依赖？（方案一要求 Docker Desktop）
-2. **Embedding 策略确认**：使用本地 Embedding 模型（无需联网，但增加包体积约 100MB）还是接入外部 Embedding API（需要网络和 API Key）？
-3. **推荐方案（方案一）审批**：是否批准采用 Python + FastAPI + ChromaDB + Vue.js 3 技术栈？
+| 审批事项 | 决策结果 |
+| --- | --- |
+| 部署方式 | ✅ 采用 Docker + docker-compose，接受 Docker Desktop 作为必要依赖 |
+| Embedding 策略 | ✅ 使用本地轻量级 Embedding 模型（`all-MiniLM-L6-v2`），无需联网，包体积增加约 100MB 可接受 |
+| 技术栈选型 | ✅ **方案一：Python 3.11+ + FastAPI + ChromaDB + Vue.js 3** |
+
+**最终技术栈：**
+
+| 组件 | 技术选型 |
+| --- | --- |
+| 后端框架 | Python 3.11+ + FastAPI |
+| 记忆存储 | ChromaDB（嵌入式向量数据库）|
+| Embedding | sentence-transformers（`all-MiniLM-L6-v2`，本地运行）|
+| AI Agent 接口 | MCP Server（`mcp` Python SDK）+ REST API |
+| 前端框架 | Vue.js 3 + TypeScript + Element Plus |
+| 部署方式 | Docker + docker-compose |
+| 自启动 | Docker restart policy `always` |
+| 日志存储 | SQLite + aiosqlite（记录存/查操作日志）|
+
+本技术路线已确认，后续各研发工程师须严格遵循上述技术栈进行系统设计和研发。
 
 ---
 
