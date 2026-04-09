@@ -1,10 +1,11 @@
-﻿# AIR_Memory 团队建设计划
+# AIR_Memory 团队建设计划
 
 ## 变更记录
 
 | 版本号 | 变更时间 | 变更内容 |
 | --- | --- | --- |
 | 1.0 | 2026-4-8 | 初稿 |
+| 1.1 | 2026-4-9 | 补充 Mia/Neo/Sparrow 技能定义（基于技术路线方案一）|
 
 ## 团队架构
 
@@ -49,19 +50,19 @@
 
 - 负责系统 UI 设计;
 - 负责前端功能研发;
-- **技能定义**: 待系统架构师确认技术路线后补充; <!-- TODO: 待补充 -->
+- **技能定义**：Vue.js 3 (Composition API + `<script setup>`)、TypeScript、Element Plus、Vite、Vue Router 4、Pinia、Axios；测试使用 Vitest + Vue Test Utils;
 
 ### 后端研发工程师 - Neo (AI)
 
 - 负责系统后端功能设计;
 - 负责系统后端功能研发;
-- **技能定义**: 待系统架构师确认技术路线后补充; <!-- TODO: 待补充 -->
+- **技能定义**：Python 3.11+、FastAPI、ChromaDB、sentence-transformers、mcp (MCP Python SDK)、SQLite + aiosqlite、Pydantic v2、Docker + docker-compose；测试使用 pytest + pytest-asyncio + httpx;
 
 ### 测试工程师 - Sparrow (AI)
 
 - 负责系统单元测试设计;
 - 负责系统单元测试研发;
-- **技能定义**: 待系统架构师确认技术路线后补充; <!-- TODO: 待补充 -->
+- **技能定义**：后端测试: pytest、pytest-asyncio、httpx、coverage.py；前端测试: Vitest、Vue Test Utils、@testing-library/vue;
 
 ### 验证工程师 - Wii (AI)
 
@@ -73,9 +74,9 @@
 
 > 以下事项因技术路线和系统架构尚未确认, 暂未完成, 需在架构确认后补充:
 
-- [ ] 前端研发工程师 Mia 的技能定义;
-- [ ] 后端研发工程师 Neo 的技能定义;
-- [ ] 测试工程师 Sparrow 的技能定义;
+- [x] 前端研发工程师 Mia 的技能定义;
+- [x] 后端研发工程师 Neo 的技能定义;
+- [x] 测试工程师 Sparrow 的技能定义;
 
 ## 协作说明
 
