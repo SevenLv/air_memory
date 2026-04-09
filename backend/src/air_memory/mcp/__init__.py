@@ -1,1 +1,1 @@
-"""MCP Server module."""
+"""MCP Server 模块。"""

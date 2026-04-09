@@ -1,1 +1,1 @@
-"""Operation log module (SQLite + aiosqlite)."""
+"""操作日志模块。"""

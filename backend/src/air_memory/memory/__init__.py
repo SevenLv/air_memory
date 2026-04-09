@@ -1,1 +1,1 @@
-"""Memory storage module (ChromaDB)."""
+"""记忆存储模块。"""
