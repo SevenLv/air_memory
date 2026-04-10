@@ -54,7 +54,7 @@ async def save_memory(content: str) -> str:
         await db.execute(
             "INSERT OR IGNORE INTO memory_values"
             " (memory_id, value_score, tier, feedback_count, created_at, updated_at)"
-            " VALUES (?, ?, 'cold', 0, ?, ?)",
+            " VALUES (?, ?, 'hot', 0, ?, ?)",  # 记忆已写入热层，tier 应为 hot
             (memory_id, settings.INITIAL_VALUE_SCORE, now, now),
         )
         await db.commit()
