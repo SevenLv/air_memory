@@ -24,7 +24,12 @@ class MockSentenceTransformer:
     """轻量级 Mock 模型，以随机向量替代真实 Embedding，避免加载大型模型。"""
 
     def encode(self, text: str, convert_to_numpy: bool = False) -> np.ndarray:
-        """返回固定维度 384 的确定性向量（基于文本哈希，相同文本返回相同向量）。"""
+        """返回固定维度 384 的确定性向量（基于文本哈希，相同文本返回相同向量）。
+
+        使用 `abs(hash(text)) % (2**32)` 作为随机种子，原因：numpy 的 `default_rng`
+        要求种子值为 0 ≤ seed < 2**32 的无符号 32 位整数，而 Python hash() 可能返回
+        负数，因此需要先取绝对值再对 2**32 取模以确保范围合法。
+        """
         rng = np.random.default_rng(abs(hash(text)) % (2**32))
         vec = rng.random(384).astype(np.float32)
         # 归一化，避免距离值异常
