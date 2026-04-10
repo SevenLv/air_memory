@@ -25,7 +25,7 @@ where docker >nul 2>&1
 if errorlevel 1 (
     echo [错误] 未检测到 Docker,请先安装 Docker Desktop.
     if !WINBUILD! LEQ 17763 (
-        echo        当前系统(Windows 10 Build !WINBUILD!)需安装兼容版本 Docker Desktop 4.15.0.
+        echo        当前系统^(Windows 10 Build !WINBUILD!^)需安装兼容版本 Docker Desktop 4.15.0.
         echo        下载地址:https://desktop.docker.com/win/main/amd64/93002/Docker%%20Desktop%%20Installer.exe
     ) else (
         echo        下载地址:https://desktop.docker.com/win/main/amd64/Docker%%20Desktop%%20Installer.exe
