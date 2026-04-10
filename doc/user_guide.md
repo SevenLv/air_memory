@@ -212,12 +212,8 @@ AIR_Memory MCP Server 暴露以下三个工具：
 
 返回示例：
 
-```json
-{
-  "memory_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "tier": "hot",
-  "message": "ok"
-}
+```
+"a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 ```
 
 **查询记忆**（`query_memory`，快速模式）：
@@ -318,7 +314,7 @@ POST /api/v1/memories
 }
 ```
 
-响应（HTTP 200）：
+响应（HTTP 201）：
 
 ```json
 {

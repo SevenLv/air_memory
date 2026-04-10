@@ -45,7 +45,7 @@ services:
       DEMOTE_THRESHOLD: "0.3"
 
       # ---- 价值分配置 ----
-      INITIAL_VALUE_SCORE: "0.5"
+      INITIAL_VALUE_SCORE: "0.6"
       FEEDBACK_STEP: "0.1"
 
       # ---- ChromaDB 集合名称 ----
