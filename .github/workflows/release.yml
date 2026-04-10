@@ -1,0 +1,28 @@
+name: 发布 AIR_Memory
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '版本号（例如 v1.0.0）'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 创建 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.event.inputs.tag }}" \
+            --title "AIR_Memory ${{ github.event.inputs.tag }}" \
+            --notes-file doc/release_notes_v1.0.md \
+            doc/deploy_guide.md \
+            doc/user_guide.md
