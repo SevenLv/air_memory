@@ -32,7 +32,7 @@
 | 软件 | 版本要求 | 说明 |
 | --- | --- | --- |
 | Docker Engine / Docker Desktop | **27.0 及以上** | 必须包含 Docker Compose v2 插件 |
-| 操作系统 | macOS 13+ 或 Windows 10/11 | Windows 需启用 WSL 2 |
+| 操作系统 | macOS 13+ 或 Windows 10/11 | Windows 需安装 Docker Desktop（含虚拟化支持） |
 
 #### macOS 安装 Docker Desktop
 
@@ -45,7 +45,6 @@
 安装前置条件：
 
 - 已在 BIOS 中启用虚拟化（Intel VT-x 或 AMD-V）
-- 已在 Windows 功能中启用 WSL 2（Windows Subsystem for Linux 2）
 
 安装完成后启动 Docker Desktop，等待任务栏图标显示"Docker Desktop is running"。
 

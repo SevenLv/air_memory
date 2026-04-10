@@ -36,6 +36,8 @@ class TestTierManagerRestoreHotTier:
     ):
         """启动恢复不应将 value_score < PROMOTE_THRESHOLD 的冷层记忆加载到热层。"""
         id1 = await memory_service.save("低价值记忆内容")
+        # 模拟系统重启：热层被清空（EphemeralClient 不持久化），记忆仍在冷层
+        await memory_service.demote(id1, value_score=0.2)
         await insert_memory_value(db_path, id1, value_score=0.2, tier="cold")
 
         await tier_manager.restore_hot_tier()
@@ -53,6 +55,8 @@ class TestTierManagerRestoreHotTier:
 
         try:
             id1 = await memory_service.save("预算测试记忆")
+            # 模拟系统重启：热层被清空，记忆仍在冷层
+            await memory_service.demote(id1, value_score=0.9)
             await insert_memory_value(db_path, id1, value_score=0.9, tier="cold")
 
             await tier_manager.restore_hot_tier()
@@ -127,11 +131,11 @@ class TestTierManagerGetHotStats:
 
     @pytest.mark.asyncio
     async def test_get_hot_stats_after_save(self, tier_manager, memory_service):
-        """存储记忆后，cold_count 应增加。"""
+        """存储记忆后，hot_count 和 cold_count 均应增加（新记忆同时进入热层和冷层）。"""
         await memory_service.save("统计测试记忆")
         stats = tier_manager.get_hot_stats()
         assert stats["cold_count"] == 1
-        assert stats["hot_count"] == 0
+        assert stats["hot_count"] == 1
 
     @pytest.mark.asyncio
     async def test_get_hot_stats_after_promote(self, tier_manager, memory_service):

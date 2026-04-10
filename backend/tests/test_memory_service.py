@@ -30,6 +30,13 @@ class TestMemoryServiceSave:
         assert memory_service.get_cold_count() == initial_count + 1
 
     @pytest.mark.asyncio
+    async def test_save_increments_hot_count(self, memory_service):
+        """存储记忆后热层计数应加 1（新记忆初始进入热层）。"""
+        initial_count = memory_service.get_hot_count()
+        await memory_service.save("热层初始计数测试")
+        assert memory_service.get_hot_count() == initial_count + 1
+
+    @pytest.mark.asyncio
     async def test_save_multiple_returns_unique_ids(self, memory_service):
         """多次存储应返回不同的 memory_id。"""
         id1 = await memory_service.save("内容一")
@@ -74,14 +81,14 @@ class TestMemoryServiceDeepQuery:
         )
 
     @pytest.mark.asyncio
-    async def test_deep_query_returns_cold_tier(self, memory_service):
-        """初始存储在冷层，深度查询返回的记忆 tier 应为 'cold'。"""
-        content = "冷层查询测试内容"
+    async def test_deep_query_returns_hot_tier(self, memory_service):
+        """新记忆初始存入热层，深度查询返回的记忆 tier 应为 'hot'。"""
+        content = "热层查询测试内容"
         memory_id = await memory_service.save(content)
-        results = await memory_service.query("冷层查询", top_k=5, fast_only=False)
+        results = await memory_service.query("热层查询", top_k=5, fast_only=False)
         target = next((m for m in results if m.id == memory_id), None)
         assert target is not None
-        assert target.tier == "cold"
+        assert target.tier == "hot"
 
     @pytest.mark.asyncio
     async def test_deep_query_response_time_within_1000ms(self, memory_service):
@@ -115,11 +122,13 @@ class TestMemoryServiceFastQuery:
     """测试 MemoryService.query() 快速查询模式（fast_only=True）。"""
 
     @pytest.mark.asyncio
-    async def test_fast_query_empty_when_cold_only(self, memory_service):
-        """刚存入冷层的记忆不应出现在快速查询结果中（热层为空）。"""
-        await memory_service.save("快速查询测试内容")
+    async def test_fast_query_returns_new_memory(self, memory_service):
+        """新存入的记忆应出现在快速查询结果中（新记忆初始在热层）。"""
+        content = "快速查询测试内容"
+        memory_id = await memory_service.save(content)
         results = await memory_service.query("快速查询", top_k=5, fast_only=True)
-        assert results == [], "新存入冷层的记忆不应出现在热层快速查询中"
+        ids = [m.id for m in results]
+        assert memory_id in ids, "新记忆应在热层可被快速查询"
 
     @pytest.mark.asyncio
     async def test_fast_query_content_correct_after_promote(self, memory_service):
@@ -167,13 +176,13 @@ class TestMemoryServiceTierMigration:
 
     @pytest.mark.asyncio
     async def test_promote_moves_to_hot(self, memory_service):
-        """promote() 应将记忆加入热层。"""
+        """promote() 应将记忆加入热层（新记忆已在热层，upsert 后计数不变）。"""
         content = "升级迁移测试内容"
         memory_id = await memory_service.save(content)
-        assert memory_service.get_hot_count() == 0
+        assert memory_service.get_hot_count() == 1  # 新记忆初始在热层
 
         await memory_service.promote(memory_id, value_score=0.8)
-        assert memory_service.get_hot_count() == 1
+        assert memory_service.get_hot_count() == 1  # upsert，计数不变
 
     @pytest.mark.asyncio
     async def test_demote_removes_from_hot(self, memory_service):
@@ -216,8 +225,6 @@ class TestMemoryServiceTierMigration:
     @pytest.mark.asyncio
     async def test_get_hot_memory_mb(self, memory_service):
         """热层内存估算应随记忆数量增加而增大。"""
-        assert memory_service.get_hot_memory_mb() == 0.0
         content = "内存估算测试"
         memory_id = await memory_service.save(content)
-        await memory_service.promote(memory_id, value_score=0.8)
-        assert memory_service.get_hot_memory_mb() > 0
+        assert memory_service.get_hot_memory_mb() > 0  # 新记忆在热层，内存 > 0

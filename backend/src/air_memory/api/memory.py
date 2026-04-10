@@ -48,12 +48,12 @@ async def save_memory(
     memory_id = await memory_svc.save(body.content)
     now = datetime.now(timezone.utc).isoformat()
 
-    # 写入 memory_values 初始记录
+    # 写入 memory_values 初始记录（新记忆初始进入热层）
     async with aiosqlite.connect(settings.DB_PATH) as db:
         await db.execute(
             "INSERT OR IGNORE INTO memory_values"
             " (memory_id, value_score, tier, feedback_count, created_at, updated_at)"
-            " VALUES (?, ?, 'cold', 0, ?, ?)",
+            " VALUES (?, ?, 'hot', 0, ?, ?)",
             (memory_id, settings.INITIAL_VALUE_SCORE, now, now),
         )
         await db.commit()
@@ -63,7 +63,7 @@ async def save_memory(
     # 异步触发磁盘检查
     asyncio.create_task(disk_mgr.check_and_evict())
 
-    return MemorySaveResponse(memory_id=memory_id, tier="cold")
+    return MemorySaveResponse(memory_id=memory_id, tier="hot")
 
 
 @router.get("", response_model=MemoryQueryResponse)

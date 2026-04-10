@@ -94,7 +94,7 @@ class TestSaveMemoryAPI:
         assert resp.status_code == 201
         data = resp.json()
         assert "memory_id" in data
-        assert data["tier"] == "cold"
+        assert data["tier"] == "hot"
         assert data["message"] == "ok"
 
     @pytest.mark.asyncio
