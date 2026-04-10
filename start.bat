@@ -15,11 +15,21 @@ echo ==========================================
 echo  AIR_Memory 一键启动
 echo ==========================================
 
+REM 检测 Windows 版本以提供兼容的 Docker Desktop 下载地址
+for /f "tokens=2 delims=[]" %%a in ('ver') do set "WINVERSTR=%%a"
+for /f "tokens=3 delims=." %%b in ("!WINVERSTR!") do set "WINBUILD=%%b"
+if "!WINBUILD!"=="" set "WINBUILD=99999"
+
 REM 检查 Docker 是否已安装
 where docker >nul 2>&1
 if errorlevel 1 (
     echo [错误] 未检测到 Docker,请先安装 Docker Desktop.
-    echo        下载地址:https://www.docker.com/products/docker-desktop/
+    if !WINBUILD! LEQ 17763 (
+        echo        当前系统(Windows 10 Build !WINBUILD!)需安装兼容版本 Docker Desktop 4.15.0.
+        echo        下载地址:https://desktop.docker.com/win/main/amd64/93002/Docker%%20Desktop%%20Installer.exe
+    ) else (
+        echo        下载地址:https://desktop.docker.com/win/main/amd64/Docker%%20Desktop%%20Installer.exe
+    )
     pause
     exit /b 1
 )
