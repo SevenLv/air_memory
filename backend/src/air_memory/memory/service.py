@@ -112,7 +112,7 @@ class MemoryService:
             result = await asyncio.to_thread(
                 self._cold_col.get,
                 ids=[memory_id],
-                include=["metadatas"],
+                include=["documents", "embeddings", "metadatas"],
             )
         except Exception:
             pass
@@ -123,6 +123,8 @@ class MemoryService:
                 await asyncio.to_thread(
                     self._cold_col.upsert,
                     ids=[memory_id],
+                    documents=result["documents"],
+                    embeddings=result["embeddings"],
                     metadatas=[metadata],
                 )
         await asyncio.to_thread(self._safe_delete, self._hot_col, memory_id)
