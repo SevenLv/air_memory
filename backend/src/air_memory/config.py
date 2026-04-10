@@ -26,8 +26,9 @@ class Settings:
     # 热层降级阈值：value_score < 此值且在热层时降级
     DEMOTE_THRESHOLD: float = float(os.getenv("DEMOTE_THRESHOLD", "0.3"))
 
-    # 初始价值分
-    INITIAL_VALUE_SCORE: float = float(os.getenv("INITIAL_VALUE_SCORE", "0.5"))
+    # 初始价值分：与升级阈值保持一致，确保新记忆被视为"值得热层访问"
+    # 设置为 PROMOTE_THRESHOLD 以保证重启恢复及预算驱逐时新记忆不处于劣势
+    INITIAL_VALUE_SCORE: float = float(os.getenv("INITIAL_VALUE_SCORE", "0.6"))
 
     # 价值分变化步长
     FEEDBACK_STEP: float = float(os.getenv("FEEDBACK_STEP", "0.1"))

@@ -24,8 +24,8 @@ CREATE TABLE IF NOT EXISTS query_logs (
 
 CREATE TABLE IF NOT EXISTS memory_values (
     memory_id      TEXT    PRIMARY KEY,
-    value_score    REAL    NOT NULL DEFAULT 0.5,
-    tier           TEXT    NOT NULL DEFAULT 'cold',
+    value_score    REAL    NOT NULL DEFAULT 0.6,
+    tier           TEXT    NOT NULL DEFAULT 'hot',
     feedback_count INTEGER NOT NULL DEFAULT 0,
     created_at     TEXT    NOT NULL,
     updated_at     TEXT    NOT NULL

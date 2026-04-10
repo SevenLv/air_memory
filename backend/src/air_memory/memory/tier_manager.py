@@ -13,13 +13,14 @@ class TierManager:
         self._memory_service: MemoryService = memory_service
 
     async def restore_hot_tier(self) -> None:
-        """启动时从 SQLite 读取 value_score，按分值排序将高价值记忆批量加载至热层。"""
+        """启动时从 SQLite 恢复热层：优先加载关机前已在热层的记忆，预算充足时再补充冷层中高价值记忆。"""
         async with aiosqlite.connect(settings.DB_PATH) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 "SELECT memory_id, value_score FROM memory_values"
                 " WHERE tier = 'hot' OR value_score >= ?"
-                " ORDER BY value_score DESC",
+                # 先加载 tier='hot'（关机前在热层的记忆），再按 value_score 降序加载冷层高价值记忆
+                " ORDER BY CASE WHEN tier = 'hot' THEN 0 ELSE 1 END ASC, value_score DESC",
                 (settings.PROMOTE_THRESHOLD,),
             ) as cursor:
                 rows = await cursor.fetchall()
@@ -31,18 +32,21 @@ class TierManager:
             await self._memory_service.promote(row["memory_id"], row["value_score"])
 
     async def check_memory_budget(self) -> None:
-        """检查热层内存预算，超出时将最低价值记忆降级至冷层。"""
+        """检查热层内存预算，超出时将最低价值记忆降级至冷层。
+        驱逐顺序：优先驱逐已有反馈且价值最低的记忆，其次才驱逐从未被评价的新记忆。"""
         from air_memory.memory.service import MemoryService  # noqa: F401
 
         if self._memory_service.get_hot_memory_mb() <= settings.HOT_MEMORY_BUDGET_MB:
             return
 
-        # 从 SQLite 获取热层中价值最低的记忆
+        # 驱逐顺序：已有反馈(feedback_count>0)的低价值记忆优先；新记忆(feedback_count=0)最后
         async with aiosqlite.connect(settings.DB_PATH) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 "SELECT memory_id, value_score FROM memory_values"
-                " WHERE tier = 'hot' ORDER BY value_score ASC"
+                " WHERE tier = 'hot'"
+                " ORDER BY CASE WHEN feedback_count > 0 THEN 0 ELSE 1 END ASC,"
+                "          value_score ASC"
             ) as cursor:
                 rows = await cursor.fetchall()
 
