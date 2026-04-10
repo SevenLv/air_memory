@@ -37,16 +37,26 @@ class MemoryService:
     # ------------------------------------------------------------------
 
     async def save(self, content: str) -> str:
-        """存储一条记忆，初始存入冷层，返回 memory_id。"""
+        """存储一条记忆，初始同时存入热层和冷层，返回 memory_id。"""
         memory_id = str(uuid.uuid4())
         embedding = await asyncio.to_thread(self._encode, content)
         created_at = _now_iso()
+        metadata = {"created_at": created_at, "value_score": settings.INITIAL_VALUE_SCORE}
+        # 冷层（持久化存储，始终保有完整数据）
         await asyncio.to_thread(
             self._cold_col.add,
             ids=[memory_id],
             documents=[content],
             embeddings=[embedding],
-            metadatas=[{"created_at": created_at, "value_score": settings.INITIAL_VALUE_SCORE}],
+            metadatas=[metadata],
+        )
+        # 热层（内存快速访问，新记忆默认可被快速查询）
+        await asyncio.to_thread(
+            self._hot_col.add,
+            ids=[memory_id],
+            documents=[content],
+            embeddings=[embedding],
+            metadatas=[metadata],
         )
         return memory_id
 
@@ -112,7 +122,7 @@ class MemoryService:
             result = await asyncio.to_thread(
                 self._cold_col.get,
                 ids=[memory_id],
-                include=["metadatas"],
+                include=["documents", "embeddings", "metadatas"],
             )
         except Exception:
             pass
@@ -123,6 +133,8 @@ class MemoryService:
                 await asyncio.to_thread(
                     self._cold_col.upsert,
                     ids=[memory_id],
+                    documents=result["documents"],
+                    embeddings=result["embeddings"],
                     metadatas=[metadata],
                 )
         await asyncio.to_thread(self._safe_delete, self._hot_col, memory_id)
