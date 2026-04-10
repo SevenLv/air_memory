@@ -1,0 +1,116 @@
+<template>
+  <div class="logs-view">
+    <el-tabs v-model="activeTab" type="card" @tab-change="handleTabChange">
+      <!-- 存储操作日志 -->
+      <el-tab-pane label="存储操作日志" name="save">
+        <div class="tab-toolbar">
+          <el-button
+            type="primary"
+            :icon="Refresh"
+            :loading="logStore.saveLoading"
+            @click="logStore.fetchSaveLogs()"
+          >
+            刷新
+          </el-button>
+          <el-tag type="info">共 {{ logStore.saveLogs.length }} 条</el-tag>
+        </div>
+        <LogTable :data="logStore.saveLogs" :loading="logStore.saveLoading">
+          <el-table-column prop="id" label="ID" width="70" align="center" />
+          <el-table-column prop="created_at" label="时间" width="200" />
+          <el-table-column prop="memory_id" label="记忆 ID" width="240" show-overflow-tooltip />
+          <el-table-column prop="content" label="原始内容" show-overflow-tooltip />
+          <el-table-column label="状态" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.memory_deleted ? 'info' : 'success'" size="small">
+                {{ row.memory_deleted ? '已删除' : '存在' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+        </LogTable>
+      </el-tab-pane>
+
+      <!-- 查询操作日志 -->
+      <el-tab-pane label="查询操作日志" name="query">
+        <div class="tab-toolbar">
+          <el-button
+            type="primary"
+            :icon="Refresh"
+            :loading="logStore.queryLoading"
+            @click="logStore.fetchQueryLogs()"
+          >
+            刷新
+          </el-button>
+          <el-tag type="info">共 {{ logStore.queryLogs.length }} 条</el-tag>
+        </div>
+        <LogTable :data="logStore.queryLogs" :loading="logStore.queryLoading">
+          <el-table-column prop="id" label="ID" width="70" align="center" />
+          <el-table-column prop="created_at" label="时间" width="200" />
+          <el-table-column prop="query" label="查询条件" show-overflow-tooltip />
+          <el-table-column label="查询模式" width="120" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.fast_only ? 'warning' : 'primary'" size="small">
+                {{ row.fast_only ? '快速模式' : '深度模式' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="结果摘要" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span class="results-summary">{{ parseResultsSummary(row.results) }}</span>
+            </template>
+          </el-table-column>
+        </LogTable>
+      </el-tab-pane>
+    </el-tabs>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { Refresh } from '@element-plus/icons-vue'
+import { useLogStore } from '../stores/log'
+import LogTable from '../components/LogTable.vue'
+
+const logStore = useLogStore()
+const activeTab = ref('save')
+
+/** 解析查询结果摘要：results 字段存储 JSON 字符串，展示结果数量 */
+function parseResultsSummary(results: string): string {
+  try {
+    const parsed = JSON.parse(results) as unknown[]
+    return `${parsed.length} 条结果`
+  } catch (e) {
+    console.error('解析查询结果 JSON 失败:', e)
+    return '（结果解析失败）'
+  }
+}
+
+/** 切换标签时按需加载数据 */
+function handleTabChange(tab: string): void {
+  if (tab === 'save' && logStore.saveLogs.length === 0) {
+    logStore.fetchSaveLogs()
+  } else if (tab === 'query' && logStore.queryLogs.length === 0) {
+    logStore.fetchQueryLogs()
+  }
+}
+
+onMounted(() => {
+  logStore.fetchSaveLogs()
+})
+</script>
+
+<style scoped>
+.logs-view {
+  padding: 24px;
+}
+
+.tab-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.results-summary {
+  color: #606266;
+}
+</style>

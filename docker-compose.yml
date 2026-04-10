@@ -1,0 +1,96 @@
+# ==============================================================================
+# AIR_Memory docker-compose.yml
+# 定义 backend 和 frontend 两个服务，配置自动重启和持久化 Volume
+# ==============================================================================
+services:
+
+  # ---------- 后端服务 ----------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: air-memory-backend:latest
+    container_name: air-memory-backend
+    restart: always
+
+    environment:
+      # ---- 存储路径（容器内绝对路径）----
+      CHROMA_COLD_PATH: /app/data/chroma_cold
+      DB_PATH: /app/data/logs.db
+
+      # ---- Embedding 模型（预下载已打包进镜像）----
+      EMBEDDING_MODEL: all-MiniLM-L6-v2
+      HF_HOME: /app/models
+
+      # ---- 响应时间阈值（毫秒）----
+      STORE_RESPONSE_LIMIT_MS: "100"
+      QUERY_RESPONSE_LIMIT_MS: "100"
+
+      # ---- 热层内存预算（MB，默认 6GB）----
+      HOT_MEMORY_BUDGET_MB: "6144"
+
+      # ---- 磁盘水位配置（GB）----
+      DISK_TRIGGER_GB: "38"
+      DISK_SAFE_GB: "35"
+      DISK_MAX_GB: "40"
+
+      # ---- 磁盘检查间隔（秒，默认 1 小时）----
+      DISK_CHECK_INTERVAL_S: "3600"
+
+      # ---- 新记忆保护时长（小时，默认 7 天）----
+      MEMORY_PROTECT_HOURS: "168"
+
+      # ---- 层间迁移阈值 ----
+      PROMOTE_THRESHOLD: "0.6"
+      DEMOTE_THRESHOLD: "0.3"
+
+      # ---- 价值分配置 ----
+      INITIAL_VALUE_SCORE: "0.5"
+      FEEDBACK_STEP: "0.1"
+
+      # ---- ChromaDB 集合名称 ----
+      HOT_COLLECTION: hot_memories
+      COLD_COLLECTION: cold_memories
+
+    volumes:
+      # 持久化数据目录：冷层 ChromaDB 数据 + SQLite 日志数据库
+      - air_memory_data:/app/data
+
+    networks:
+      - air_memory_net
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ---------- 前端服务 ----------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: air-memory-frontend:latest
+    container_name: air-memory-frontend
+    restart: always
+
+    ports:
+      # 对外暴露 8080，容器内 Nginx 监听 80
+      - "8080:80"
+
+    depends_on:
+      - backend
+
+    networks:
+      - air_memory_net
+
+# ---------- 持久化 Volume ----------
+volumes:
+  air_memory_data:
+    # 存储冷层 ChromaDB 数据（chroma_cold/）和 SQLite 数据库（logs.db）
+
+# ---------- 内部网络 ----------
+networks:
+  air_memory_net:
+    driver: bridge

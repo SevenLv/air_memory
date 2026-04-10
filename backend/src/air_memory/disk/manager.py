@@ -74,12 +74,21 @@ class DiskManager:
         """获取满足淘汰条件的记忆 ID 列表。
 
         条件：创建时间超过 MEMORY_PROTECT_HOURS，按 value_score ASC, created_at ASC 排序。
+
+        注意：created_at 由 _now_iso() 写入，格式为 ISO 8601（如 2026-04-08T10:30:00.123456+00:00）；
+        而 SQLite 的 datetime('now', ...) 返回格式为 2026-04-08 10:30:00（空格分隔，无微秒）。
+        两种格式在第 10 个字符处发生差异（'T' vs ' '），SQLite 按词典序比较时 'T' > ' '，
+        导致同日期边界的记忆被错误保护，无法被淘汰。
+
+        修复方案：使用 substr(created_at, 1, 19) 截取前 19 位去掉微秒和时区，
+        再用 replace(..., 'T', ' ') 将 'T' 替换为空格，最终用 datetime() 包裹确保
+        SQLite 以 datetime 语义进行比较，从而与 datetime('now', ?) 格式完全一致。
         """
         async with aiosqlite.connect(settings.DB_PATH) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 "SELECT memory_id FROM memory_values"
-                " WHERE created_at < datetime('now', ?)"
+                " WHERE datetime(replace(substr(created_at, 1, 19), 'T', ' ')) < datetime('now', ?)"
                 " ORDER BY value_score ASC, created_at ASC LIMIT ?",
                 (f"-{settings.MEMORY_PROTECT_HOURS} hours", batch_size),
             ) as cursor:

@@ -1,16 +1,45 @@
 <template>
   <el-container class="app-container">
+    <!-- 顶部标题栏 -->
     <el-header class="app-header">
-      <span class="app-title">AIR Memory</span>
+      <span class="app-title">AIR Memory 管理界面</span>
     </el-header>
-    <el-main class="app-main">
-      <RouterView />
-    </el-main>
+    <el-container class="app-body">
+      <!-- 侧边导航栏 -->
+      <el-aside width="200px" class="app-aside">
+        <el-menu
+          :default-active="$route.path"
+          router
+          class="app-menu"
+        >
+          <el-menu-item index="/">
+            <el-icon><House /></el-icon>
+            <span>控制台</span>
+          </el-menu-item>
+          <el-menu-item index="/memories">
+            <el-icon><DataLine /></el-icon>
+            <span>记忆管理</span>
+          </el-menu-item>
+          <el-menu-item index="/logs">
+            <el-icon><Document /></el-icon>
+            <span>操作日志</span>
+          </el-menu-item>
+          <el-menu-item index="/feedback">
+            <el-icon><Star /></el-icon>
+            <span>反馈记录</span>
+          </el-menu-item>
+        </el-menu>
+      </el-aside>
+      <!-- 主内容区 -->
+      <el-main class="app-main">
+        <RouterView />
+      </el-main>
+    </el-container>
   </el-container>
 </template>
 
 <script setup lang="ts">
-// Root application component
+import { House, DataLine, Document, Star } from '@element-plus/icons-vue'
 </script>
 
 <style scoped>
@@ -22,15 +51,32 @@
   background-color: #409eff;
   display: flex;
   align-items: center;
+  padding: 0 20px;
 }
 
 .app-title {
   color: #ffffff;
-  font-size: 1.25rem;
+  font-size: 1.2rem;
   font-weight: bold;
+}
+
+.app-body {
+  flex: 1;
+}
+
+.app-aside {
+  background-color: #ffffff;
+  border-right: 1px solid #e4e7ed;
+  min-height: calc(100vh - 60px);
+}
+
+.app-menu {
+  border-right: none;
+  height: 100%;
 }
 
 .app-main {
   background-color: #f5f7fa;
+  padding: 0;
 }
 </style>
