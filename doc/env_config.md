@@ -1,56 +1,58 @@
 # AIR_Memory 环境变量配置说明
 
-> 文档版本：v1.0
+> 文档版本：v1.1
 > 对应里程碑：M4 — 部署配置就绪
 
 ## 概述
 
-AIR_Memory 后端服务的所有性能阈值和路径配置均通过环境变量暴露，可在不重新构建
-Docker 镜像的情况下直接在 `docker-compose.yml` 或 `.env` 文件中覆盖配置值。
+AIR_Memory 后端服务的所有性能阈值和路径配置均通过环境变量暴露，可在不重新构建的情况下通过 `.env` 文件覆盖配置值。
 
 ---
 
 ## 配置方式
 
-### 方式一：修改 docker-compose.yml（推荐）
+### 方式一：使用 .env 文件（推荐）
 
-在 `docker-compose.yml` 的 `backend.environment` 节中直接修改对应变量值：
-
-```yaml
-services:
-  backend:
-    environment:
-      STORE_RESPONSE_LIMIT_MS: "200"
-      HOT_MEMORY_BUDGET_MB: "4096"
-```
-
-### 方式二：使用 .env 文件
-
-在项目根目录创建 `.env` 文件，docker-compose 会自动加载：
+在项目根目录创建 `.env` 文件，uvicorn 启动时会自动加载：
 
 ```env
 STORE_RESPONSE_LIMIT_MS=200
 HOT_MEMORY_BUDGET_MB=4096
 ```
 
-修改后无需重新构建镜像，执行以下命令即可应用新配置：
+### 方式二：设置系统环境变量
+
+在启动服务前直接导出环境变量：
 
 ```bash
-docker compose up -d
+export STORE_RESPONSE_LIMIT_MS=200
+export HOT_MEMORY_BUDGET_MB=4096
+```
+
+修改配置后重新启动服务即可生效：
+
+```bash
+./start.sh
 ```
 
 ---
 
 ## 环境变量列表
 
+### 服务端口与静态文件配置
+
+| 变量名 | 默认值 | 说明 |
+| --- | --- | --- |
+| `PORT` | `8080` | 服务监听端口（由启动脚本通过 uvicorn 命令行参数设置） |
+| `STATIC_DIR` | `./frontend/dist` | 前端静态文件目录（预构建 Vue.js 3 产物），目录不存在时跳过挂载 |
+| `CORS_ORIGINS` | `http://localhost:8080,http://127.0.0.1:8080` | 允许的 CORS 来源（逗号分隔，AI Agent 若来自其他端口需添加对应来源） |
+
 ### 存储路径配置
 
 | 变量名 | 默认值 | 说明 |
 | --- | --- | --- |
-| `CHROMA_COLD_PATH` | `/app/data/chroma_cold` | 冷层 ChromaDB 持久化数据目录（容器内路径，已挂载 Volume） |
-| `DB_PATH` | `/app/data/logs.db` | SQLite 日志数据库文件路径（容器内路径，已挂载 Volume） |
-
-> **注意**：修改存储路径需同步更新 `docker-compose.yml` 中的 Volume 挂载配置，否则数据将不被持久化。
+| `CHROMA_COLD_PATH` | `./data/chroma_cold` | 冷层 ChromaDB 持久化数据目录 |
+| `DB_PATH` | `./data/logs.db` | SQLite 日志数据库文件路径 |
 
 ---
 
@@ -58,10 +60,10 @@ docker compose up -d
 
 | 变量名 | 默认值 | 说明 |
 | --- | --- | --- |
-| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | 使用的 sentence-transformers 模型名称，模型已预下载至镜像中 |
-| `HF_HOME` | `/app/models` | HuggingFace 模型缓存目录（容器内路径，与预下载路径一致，勿修改） |
+| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | 使用的 sentence-transformers 模型名称 |
+| `HF_HOME` | `./models` | HuggingFace 模型缓存目录 |
 
-> **注意**：如需替换 Embedding 模型，需重新构建 backend 镜像。
+> **注意**：如需替换 Embedding 模型，需确保模型已预先下载至 `HF_HOME` 目录。
 
 ---
 
@@ -137,13 +139,22 @@ docker compose up -d
 ```env
 # AIR_Memory 环境变量配置示例
 
-# 存储路径（容器内路径，通常无需修改）
-CHROMA_COLD_PATH=/app/data/chroma_cold
-DB_PATH=/app/data/logs.db
+# 服务端口（由启动脚本通过 uvicorn 命令行参数设置，通常不需在 .env 中配置）
+# PORT=8080
 
-# Embedding 模型（通常无需修改）
+# 前端静态文件目录（预构建 Vue.js 3 产物）
+STATIC_DIR=./frontend/dist
+
+# 允许的 CORS 来源（逗号分隔）
+CORS_ORIGINS=http://localhost:8080,http://127.0.0.1:8080
+
+# 存储路径
+CHROMA_COLD_PATH=./data/chroma_cold
+DB_PATH=./data/logs.db
+
+# Embedding 模型
 EMBEDDING_MODEL=all-MiniLM-L6-v2
-HF_HOME=/app/models
+HF_HOME=./models
 
 # 响应时间阈值（毫秒）
 STORE_RESPONSE_LIMIT_MS=100

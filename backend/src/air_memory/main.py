@@ -1,4 +1,7 @@
-"""FastAPI 应用入口，包含 lifespan 初始化、CORS 配置和路由注册。"""
+"""FastAPI 应用入口，包含 lifespan 初始化、CORS 配置和路由注册。
+
+默认服务端口：8080（由启动脚本通过 uvicorn 命令行参数指定）。
+"""
 
 import asyncio
 import os
@@ -6,6 +9,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sentence_transformers import SentenceTransformer
 
 from air_memory.api.router import router
@@ -84,10 +88,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS 配置：允许前端访问
+# CORS 配置：允许前端访问，支持通过 CORS_ORIGINS 环境变量自定义来源（逗号分隔）
+CORS_ORIGINS = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:8080,http://127.0.0.1:8080",
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -104,3 +113,12 @@ app.mount("/mcp", mcp.streamable_http_app())
 async def health_check() -> dict:
     """健康检查接口。"""
     return {"status": "ok"}
+
+
+# 前端静态文件服务：从环境变量获取构建产物目录，默认 frontend/dist（相对于工作目录）
+# 注意：StaticFiles 挂载必须放在所有 API 路由注册之后，否则会覆盖 API 路由
+# html=True 模式已内置 SPA 路由回退：找不到文件时自动返回 index.html，支持 Vue Router history 模式
+STATIC_DIR = os.getenv("STATIC_DIR", "frontend/dist")
+
+if os.path.isdir(STATIC_DIR):
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
