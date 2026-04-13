@@ -112,7 +112,7 @@ source .venv/bin/activate
 
 # 安装 / 更新依赖
 echo "[2/4] 安装 Python 依赖（首次约 2~5 分钟）..."
-pip install --quiet --upgrade pip
+python -m pip install --quiet --upgrade pip
 pip install --quiet -r backend/requirements.txt
 pip install --quiet --no-deps -e backend/
 

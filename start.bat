@@ -2,10 +2,10 @@
 chcp 65001 >nul 2>&1
 REM ==============================================================================
 REM AIR_Memory 一键启动脚本 (Windows)
-REM 用法: 双击运行 start.bat，或在命令提示符中执行
+REM 用法: 双击运行 start.bat,或在命令提示符中执行
 REM   start.bat          正常启动
-REM   start.bat /install   安装 Task Scheduler 自启动（需管理员权限）
-REM   start.bat /uninstall 卸载 Task Scheduler 自启动（需管理员权限）
+REM   start.bat /install   安装 Task Scheduler 自启动(需管理员权限)
+REM   start.bat /uninstall 卸载 Task Scheduler 自启动(需管理员权限)
 REM ==============================================================================
 
 setlocal enabledelayedexpansion
@@ -28,7 +28,7 @@ echo ==========================================
 REM 检查 Python 3.11+
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [错误] 未检测到 Python，请先安装 Python 3.11+.
+    echo [错误] 未检测到 Python,请先安装 Python 3.11+.
     echo        下载地址: https://www.python.org/downloads/
     pause
     exit /b 1
@@ -37,7 +37,7 @@ if errorlevel 1 (
 REM 检查 Python 版本是否 >= 3.11
 python -c "import sys; exit(0 if sys.version_info >= (3,11) else 1)" >nul 2>&1
 if errorlevel 1 (
-    echo [错误] Python 版本不满足要求，请安装 Python 3.11+.
+    echo [错误] Python 版本不满足要求,请安装 Python 3.11+.
     python --version
     pause
     exit /b 1
@@ -46,7 +46,7 @@ if errorlevel 1 (
 for /f "tokens=*" %%v in ('python --version') do set PYVER=%%v
 echo [检查] 使用 !PYVER!
 
-REM 创建虚拟环境（如不存在）
+REM 创建虚拟环境(如不存在)
 if not exist ".venv" (
     echo [1/4] 创建 Python 虚拟环境...
     python -m venv .venv
@@ -62,10 +62,10 @@ call .venv\Scripts\activate.bat
 
 REM 安装/更新依赖
 echo [2/4] 安装 Python 依赖^(首次约 2^~5 分钟^)...
-pip install --quiet --upgrade pip
+python -m pip install --quiet --upgrade pip
 pip install --quiet -r backend\requirements.txt
 if errorlevel 1 (
-    echo [错误] 依赖安装失败，请检查网络连接后重试.
+    echo [错误] 依赖安装失败,请检查网络连接后重试.
     pause
     exit /b 1
 )
@@ -75,7 +75,7 @@ REM 准备数据目录
 echo [3/4] 准备数据目录...
 if not exist "data\chroma_cold" mkdir "data\chroma_cold"
 
-REM 设置环境变量（未设置时使用默认值）
+REM 设置环境变量(未设置时使用默认值)
 if not defined CHROMA_COLD_PATH set "CHROMA_COLD_PATH=!SCRIPT_DIR!\data\chroma_cold"
 if not defined DB_PATH set "DB_PATH=!SCRIPT_DIR!\data\logs.db"
 if not defined STATIC_DIR set "STATIC_DIR=!SCRIPT_DIR!\frontend\dist"
@@ -100,7 +100,7 @@ if not defined PORT set "PORT=8080"
 echo [4/4] 启动 AIR_Memory 服务...
 echo.
 echo ==========================================
-echo  AIR_Memory 启动成功！
+echo  AIR_Memory 启动成功!
 echo ==========================================
 echo  Web 管理界面: http://localhost:!PORT!
 echo  后端 API 文档: http://localhost:!PORT!/api/v1/docs
@@ -120,7 +120,7 @@ echo ==========================================
 REM 检查管理员权限
 net session >nul 2>&1
 if errorlevel 1 (
-    echo [错误] 需要管理员权限，请以管理员身份运行命令提示符后重试.
+    echo [错误] 需要管理员权限,请以管理员身份运行命令提示符后重试.
     pause
     exit /b 1
 )
@@ -135,7 +135,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [成功] AIR_Memory 自启动任务已安装，用户登录后将自动启动.
+echo [成功] AIR_Memory 自启动任务已安装,用户登录后将自动启动.
 echo        卸载自启动: start.bat /uninstall
 pause
 goto :eof
@@ -150,7 +150,7 @@ set "TASK_NAME=AIR_Memory"
 
 schtasks /delete /tn "!TASK_NAME!" /f >nul 2>&1
 if errorlevel 1 (
-    echo [提示] 未找到已安装的任务，无需卸载.
+    echo [提示] 未找到已安装的任务,无需卸载.
 ) else (
     echo [成功] AIR_Memory 自启动任务已卸载.
 )
