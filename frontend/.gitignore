@@ -1,5 +1,6 @@
 node_modules/
-dist/
+# dist/ 目录纳入版本控制，使用户无需安装 Node.js 即可运行系统
+# dist/
 *.local
 .DS_Store
 coverage/

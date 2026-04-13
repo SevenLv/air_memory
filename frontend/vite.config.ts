@@ -4,6 +4,16 @@ import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
   plugins: [vue()],
+  // base 默认为 '/'，生产构建使用相对路径，与 FastAPI StaticFiles 挂载兼容
+  server: {
+    // 开发模式代理：将 /api/v1 请求转发到后端服务（仅开发模式生效，不影响生产构建）
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+    },
+  },
   test: {
     // Vitest 测试环境配置
     environment: 'jsdom',

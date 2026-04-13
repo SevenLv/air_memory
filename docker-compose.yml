@@ -1,6 +1,12 @@
 # ==============================================================================
-# AIR_Memory docker-compose.yml
-# 定义 backend 和 frontend 两个服务，配置自动重启和持久化 Volume
+# [已废弃] AIR_Memory docker-compose.yml
+#
+# 注意：自 sad_v1.11 起，本项目已从 Docker 容器化方案迁移到
+# Python 本机直接运行方案。此文件仅作历史参考，不再用于部署。
+#
+# 当前部署方式：
+#   macOS/Linux: bash start.sh
+#   Windows:     start.bat
 # ==============================================================================
 services:
 
