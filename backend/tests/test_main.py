@@ -11,8 +11,10 @@ import os
 
 import pytest
 from fastapi import FastAPI
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from air_memory.main import app
 
@@ -97,15 +99,14 @@ def test_static_dir_serves_index_html(tmp_path) -> None:
 
 
 def test_static_dir_unknown_route_returns_404(tmp_path) -> None:
-    """当请求的路径在静态目录中不存在时，返回 404。
+    """当请求的路径在静态目录中不存在时，不含 SPA 回退处理器的纯 StaticFiles 应用返回 404。
 
     注意：Starlette 1.x 的 StaticFiles(html=True) 不提供 SPA 路由回退（即不会为所有
     未知路径返回 index.html）。html=True 仅在以下情况有效：
     - 请求路径是目录时，返回该目录下的 index.html（如 "/" → "index.html"）
     - 存在 404.html 文件时，以 404 状态码返回 404.html
 
-    如需完整 SPA 路由回退支持，需在应用层增加自定义中间件，或通过反向代理（如
-    Nginx）配置 try_files 规则。
+    完整 SPA 路由回退需通过自定义异常处理器实现（见 test_spa_fallback_returns_index_html）。
     """
     dist_dir = tmp_path / "dist"
     dist_dir.mkdir()
@@ -115,9 +116,59 @@ def test_static_dir_unknown_route_returns_404(tmp_path) -> None:
     test_app.mount("/", StaticFiles(directory=str(dist_dir), html=True), name="static")
 
     test_client = TestClient(test_app, raise_server_exceptions=False)
-    # 访问静态目录中不存在的路径，Starlette 1.x 返回 404
+    # 访问静态目录中不存在的路径，无 SPA 回退处理器时 Starlette 1.x 返回 404
     response = test_client.get("/memories")
     assert response.status_code == 404
+
+
+def _make_spa_app(static_dir: str) -> FastAPI:
+    """创建含 StaticFiles 挂载和 SPA 回退处理器的测试应用（与 main.py 行为一致）。"""
+    test_app = FastAPI()
+    test_app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+
+    @test_app.exception_handler(StarletteHTTPException)
+    async def _spa_fallback(request, exc):
+        if exc.status_code == 404:
+            path = request.url.path
+            if not path.startswith("/api/") and not path.startswith("/mcp"):
+                index_path = os.path.join(static_dir, "index.html")
+                if os.path.isfile(index_path):
+                    return FileResponse(index_path)
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+    return test_app
+
+
+def test_spa_fallback_returns_index_html(tmp_path) -> None:
+    """当 STATIC_DIR 存在且请求路径为非 API 路径时，SPA 回退处理器应返回 index.html（状态码 200）。
+
+    验证自定义异常处理器能正确处理 Vue Router history 模式下的直接 URL 访问。
+    """
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    index_content = "<html><body>AIR Memory SPA</body></html>"
+    (dist_dir / "index.html").write_text(index_content, encoding="utf-8")
+
+    test_client = TestClient(_make_spa_app(str(dist_dir)))
+    response = test_client.get("/memories")
+    assert response.status_code == 200
+    assert "AIR Memory SPA" in response.text
+
+
+def test_spa_fallback_api_path_returns_json_404(tmp_path) -> None:
+    """/api/ 路径的 404 错误应返回 JSON 格式响应，而非 SPA 回退。
+
+    验证自定义异常处理器不会覆盖 API 路径的错误响应。
+    """
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    (dist_dir / "index.html").write_text("<html><body>SPA</body></html>", encoding="utf-8")
+
+    test_client = TestClient(_make_spa_app(str(dist_dir)), raise_server_exceptions=False)
+    response = test_client.get("/api/v1/nonexistent")
+    assert response.status_code == 404
+    data = response.json()
+    assert "detail" in data
 
 
 # ---------------------------------------------------------------------------
