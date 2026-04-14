@@ -8,6 +8,7 @@ import type {
   MemoryValueScore,
   TierStats,
   DiskStats,
+  AppVersion,
 } from './types'
 
 /** 统一 Axios 实例 */
@@ -93,5 +94,11 @@ export async function getTierStats(): Promise<TierStats> {
 /** 获取磁盘占用统计 */
 export async function getDiskStats(): Promise<DiskStats> {
   const res = await apiClient.get<DiskStats>('/admin/disk-stats')
+  return res.data
+}
+
+/** 获取系统版本号 */
+export async function getVersion(): Promise<AppVersion> {
+  const res = await apiClient.get<AppVersion>('/version')
   return res.data
 }

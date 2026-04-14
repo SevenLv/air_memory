@@ -82,3 +82,8 @@ export interface DiskStats {
   disk_trigger_gb: number
   disk_safe_gb: number
 }
+
+/** 系统版本信息 */
+export interface AppVersion {
+  version: string
+}
