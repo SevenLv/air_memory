@@ -157,4 +157,5 @@ echo ""
 exec uvicorn air_memory.main:app \
     --host 127.0.0.1 \
     --port "$PORT" \
-    --app-dir backend/src
+    --app-dir backend/src \
+    --no-access-log
