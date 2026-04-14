@@ -17,3 +17,11 @@ class FeedbackLogsResponse(BaseModel):
 
     logs: list[FeedbackLog]
     count: int
+
+
+class FeedbackLogsWithTotalResponse(BaseModel):
+    """反馈日志列表响应（含总条数，用于分页）。"""
+
+    logs: list[FeedbackLog]
+    count: int  # 当前页条数
+    total: int  # 符合条件的总条数

@@ -26,7 +26,7 @@ from air_memory.mcp.server import init_mcp_services, mcp
 from air_memory.memory.service import MemoryService
 from air_memory.memory.tier_manager import TierManager
 
-APP_VERSION = "1.2.2"
+APP_VERSION = "1.2.4"
 
 # 在 Python 运行时尝试强制 UTF-8 I/O 编码（防御性措施）
 # 注意：PYTHONUTF8=1 必须在 Python 启动前设置；此处仅作运行时补充措施
@@ -56,6 +56,20 @@ _logger = logging.getLogger(__name__)
 #   - air_memory.* WARNING/ERROR -> 仍正常输出
 #   - uvicorn.* 所有日志 -> 不受影响（propagate=False，使用独立 handler）
 logging.getLogger().setLevel(logging.WARNING)
+
+# 修复 Issue #30 追加：抑制第三方库的 INFO 级日志，防止其独立 handler 向 stderr 输出
+# 某些库（chromadb、sentence_transformers 等）有自己的 logger handler，
+# 不受 root logger 级别控制，需单独抑制
+for _noisy_lib in [
+    "chromadb", "chromadb.api", "chromadb.db",
+    "sentence_transformers",
+    "transformers", "transformers.tokenization_utils_base",
+    "httpx", "httpcore", "h11",
+    "mcp", "mcp.server", "mcp.server.lowlevel",
+    "mcp.server.streamable_http", "mcp.server.streamable_http_manager",
+    "asyncio",
+]:
+    logging.getLogger(_noisy_lib).setLevel(logging.WARNING)
 
 # Windows 平台启动时检查 UTF-8 模式，避免中文因 ANSI 代码页被损坏为问号
 # PYTHONUTF8=1 或 python -X utf8 可激活 UTF-8 模式（sys.flags.utf8_mode == 1）

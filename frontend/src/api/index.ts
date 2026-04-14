@@ -9,6 +9,7 @@ import type {
   TierStats,
   DiskStats,
   AppVersion,
+  FeedbackLogsWithTotalResponse,
 } from './types'
 
 /** 统一 Axios 实例 */
@@ -100,5 +101,25 @@ export async function getDiskStats(): Promise<DiskStats> {
 /** 获取系统版本号 */
 export async function getVersion(): Promise<AppVersion> {
   const res = await apiClient.get<AppVersion>('/version')
+  return res.data
+}
+
+/** 查询反馈记录列表（支持时间段、记忆 ID 过滤和分页） */
+export async function getAllFeedbackLogs(params: {
+  memoryId?: string
+  startTime?: string
+  endTime?: string
+  page?: number
+  pageSize?: number
+}): Promise<FeedbackLogsWithTotalResponse> {
+  const res = await apiClient.get<FeedbackLogsWithTotalResponse>('/logs/feedback', {
+    params: {
+      memory_id: params.memoryId || undefined,
+      start_time: params.startTime || undefined,
+      end_time: params.endTime || undefined,
+      page: params.page,
+      page_size: params.pageSize,
+    },
+  })
   return res.data
 }

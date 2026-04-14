@@ -87,3 +87,10 @@ export interface DiskStats {
 export interface AppVersion {
   version: string
 }
+
+/** 反馈日志列表响应（含总条数，用于分页） */
+export interface FeedbackLogsWithTotalResponse {
+  logs: FeedbackLog[]
+  count: number
+  total: number
+}
