@@ -26,11 +26,18 @@ from air_memory.mcp.server import init_mcp_services, mcp
 from air_memory.memory.service import MemoryService
 from air_memory.memory.tier_manager import TierManager
 
-APP_VERSION = "1.2.5"
+APP_VERSION = "1.2.6"
 
-# 在 Python 运行时尝试强制 UTF-8 I/O 编码（防御性措施）
-# 注意：PYTHONUTF8=1 必须在 Python 启动前设置；此处仅作运行时补充措施
-import io
+# 在 Python 运行时强制 UTF-8 I/O 编码（防御性措施）
+# 注意：PYTHONUTF8=1 必须在 Python 启动前设置（见 start.bat/start.sh）；
+# 此处补充覆盖 stdin/stdout/stderr，确保即使环境变量未生效，I/O 仍使用 UTF-8。
+# 特别是 sys.stdin：MCP SDK stdio 传输从 sys.stdin 读取内容，若编码为 CP1252，
+# 中文字符会以 errors='replace' 模式替换为 '?'，导致存储内容变成 '????'。
+if hasattr(sys.stdin, 'reconfigure'):
+    try:
+        sys.stdin.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 if hasattr(sys.stdout, 'reconfigure'):
     try:
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
