@@ -3,6 +3,7 @@
     <!-- 顶部标题栏 -->
     <el-header class="app-header">
       <span class="app-title">AIR Memory 管理界面</span>
+      <span v-if="appVersion" class="app-version">v{{ appVersion }}</span>
     </el-header>
     <el-container class="app-body">
       <!-- 侧边导航栏 -->
@@ -39,7 +40,20 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
 import { House, DataLine, Document, Star } from '@element-plus/icons-vue'
+import { getVersion } from './api/index'
+
+const appVersion = ref<string>('')
+
+onMounted(async () => {
+  try {
+    const data = await getVersion()
+    appVersion.value = data.version
+  } catch {
+    // 版本号获取失败时静默处理，不影响主功能
+  }
+})
 </script>
 
 <style scoped>
@@ -58,6 +72,12 @@ import { House, DataLine, Document, Star } from '@element-plus/icons-vue'
   color: #ffffff;
   font-size: 1.2rem;
   font-weight: bold;
+}
+
+.app-version {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.8rem;
+  margin-left: 10px;
 }
 
 .app-body {

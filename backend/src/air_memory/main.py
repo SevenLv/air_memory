@@ -4,7 +4,9 @@
 """
 
 import asyncio
+import logging
 import os
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -23,6 +25,19 @@ from air_memory.log.service import LogService
 from air_memory.mcp.server import init_mcp_services, mcp
 from air_memory.memory.service import MemoryService
 from air_memory.memory.tier_manager import TierManager
+
+APP_VERSION = "1.2.0"
+
+_logger = logging.getLogger(__name__)
+
+# Windows 平台启动时检查 UTF-8 模式，避免中文因 ANSI 代码页被损坏为问号
+# PYTHONUTF8=1 或 python -X utf8 可激活 UTF-8 模式（sys.flags.utf8_mode == 1）
+if sys.platform == "win32" and sys.flags.utf8_mode == 0:
+    _logger.warning(
+        "Python UTF-8 模式未启用（PYTHONUTF8=1 未设置）。\n"
+        "在非 CJK Windows（如 CP1252 代码页）上，中文内容可能因 locale 编码被损坏为问号。\n"
+        "请在 start.bat 中确认 'set PYTHONUTF8=1' 已生效。"
+    )
 
 
 @asynccontextmanager
@@ -73,8 +88,6 @@ async def lifespan(app: FastAPI):
 
 async def _disk_check_loop(disk_mgr: DiskManager) -> None:
     """磁盘占用定期检查循环，每隔 DISK_CHECK_INTERVAL_S 秒执行一次。"""
-    import logging
-    _logger = logging.getLogger(__name__)
     while True:
         await asyncio.sleep(settings.DISK_CHECK_INTERVAL_S)
         try:
@@ -85,7 +98,7 @@ async def _disk_check_loop(disk_mgr: DiskManager) -> None:
 
 app = FastAPI(
     title="AIR_Memory",
-    version="1.0.0",
+    version=APP_VERSION,
     description="AIR_Memory 后端服务 - 为 AI Agent 提供记忆存储和查询能力",
     lifespan=lifespan,
 )
@@ -115,6 +128,12 @@ app.mount("/mcp", mcp.streamable_http_app())
 async def health_check() -> dict:
     """健康检查接口。"""
     return {"status": "ok"}
+
+
+@app.get("/api/v1/version", tags=["system"])
+async def get_version() -> dict:
+    """获取系统版本号。"""
+    return {"version": APP_VERSION}
 
 
 # 前端静态文件服务：从环境变量获取构建产物目录，默认 frontend/dist（相对于工作目录）

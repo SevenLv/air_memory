@@ -76,7 +76,7 @@ fi
 
 # ---------- 正常启动 ----------
 echo "=========================================="
-echo " AIR_Memory 一键启动"
+echo " AIR_Memory 一键启动 v1.2.0"
 echo "=========================================="
 
 # 检查 Python 3.11+
@@ -141,6 +141,10 @@ export COLD_COLLECTION="${COLD_COLLECTION:-cold_memories}"
 export STORE_RESPONSE_LIMIT_MS="${STORE_RESPONSE_LIMIT_MS:-100}"
 export QUERY_RESPONSE_LIMIT_MS="${QUERY_RESPONSE_LIMIT_MS:-100}"
 PORT="${PORT:-8080}"
+# 强制 Python 使用 UTF-8 模式，确保中文内容在任何平台上均不因 locale 编码而损坏
+# 在 Linux/macOS 上通常已是 UTF-8，此处为防御性设置，保持跨平台一致性
+export PYTHONUTF8="${PYTHONUTF8:-1}"
+export PYTHONIOENCODING="${PYTHONIOENCODING:-utf-8}"
 
 echo "[4/4] 启动 AIR_Memory 服务..."
 echo ""
@@ -155,6 +159,7 @@ echo ""
 
 # 启动 uvicorn
 exec uvicorn air_memory.main:app \
-    --host 0.0.0.0 \
+    --host 127.0.0.1 \
     --port "$PORT" \
-    --app-dir backend/src
+    --app-dir backend/src \
+    --no-access-log
