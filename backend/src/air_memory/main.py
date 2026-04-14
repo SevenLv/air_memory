@@ -26,7 +26,7 @@ from air_memory.mcp.server import init_mcp_services, mcp
 from air_memory.memory.service import MemoryService
 from air_memory.memory.tier_manager import TierManager
 
-APP_VERSION = "1.2.4"
+APP_VERSION = "1.2.5"
 
 # 在 Python 运行时尝试强制 UTF-8 I/O 编码（防御性措施）
 # 注意：PYTHONUTF8=1 必须在 Python 启动前设置；此处仅作运行时补充措施

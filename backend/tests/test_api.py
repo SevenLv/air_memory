@@ -378,6 +378,20 @@ class TestGetSaveLogsAPI:
         logs = resp.json()["logs"]
         assert any(l["content"] == content for l in logs), "存储日志应包含刚写入的内容"
 
+    @pytest.mark.asyncio
+    async def test_save_logs_response_has_is_garbled_field(self, client):
+        """存储日志 API 响应中每条记录应包含 is_garbled 字段。"""
+        content = "测试 is_garbled 字段"
+        await client.post("/api/v1/memories", json={"content": content})
+        await asyncio.sleep(0.1)
+
+        resp = await client.get("/api/v1/logs/save")
+        assert resp.status_code == 200
+        logs = resp.json()["logs"]
+        assert len(logs) > 0
+        assert "is_garbled" in logs[0], "API 响应应包含 is_garbled 字段"
+        assert logs[0]["is_garbled"] is False, "正常中文内容的 is_garbled 应为 False"
+
 
 # ---------------------------------------------------------------------------
 # GET /api/v1/logs/query 查询日志

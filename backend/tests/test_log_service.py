@@ -227,3 +227,65 @@ class TestLogServiceQueryLogs:
         logs = await log_service.get_query_logs()
         assert len(logs) >= 2
         assert logs[0].id > logs[1].id
+
+
+class TestIsGarbledFunction:
+    """测试 _is_garbled() 检测函数。"""
+
+    def test_pure_question_marks_garbled(self):
+        """纯问号内容（CP1252 损坏模式）应被检测为乱码。"""
+        from air_memory.log.service import _is_garbled
+        assert _is_garbled("????") is True
+
+    def test_pure_question_marks_short_not_garbled(self):
+        """长度 < 2 的内容不检测为乱码。"""
+        from air_memory.log.service import _is_garbled
+        assert _is_garbled("?") is False
+
+    def test_normal_chinese_not_garbled(self):
+        """正常中文内容不应被检测为乱码。"""
+        from air_memory.log.service import _is_garbled
+        assert _is_garbled("这是正常的中文内容") is False
+
+    def test_normal_english_not_garbled(self):
+        """正常英文内容不应被检测为乱码。"""
+        from air_memory.log.service import _is_garbled
+        assert _is_garbled("Hello World") is False
+
+    def test_empty_not_garbled(self):
+        """空内容不应被检测为乱码。"""
+        from air_memory.log.service import _is_garbled
+        assert _is_garbled("") is False
+
+    def test_mixed_garbled_with_non_ascii(self):
+        """含非 ASCII 且高问号比例应被检测为乱码。"""
+        from air_memory.log.service import _is_garbled
+        # 模拟部分乱码：非 ASCII 字符 + 大量问号
+        assert _is_garbled("äöü????????????????????") is True
+
+    def test_question_heavy_english_not_garbled(self):
+        """英文中偶尔有问号，但低于阈值，不应被检测为乱码。"""
+        from air_memory.log.service import _is_garbled
+        assert _is_garbled("What is this? Why?") is False
+
+
+class TestGetSaveLogsIsGarbled:
+    """测试 get_save_logs() 返回的 is_garbled 字段。"""
+
+    @pytest.mark.asyncio
+    async def test_get_save_logs_normal_content_not_garbled(self, log_service):
+        """正常中文内容的 is_garbled 应为 False。"""
+        await log_service.log_save("正常中文内容", "test-id-garbled-001")
+        logs = await log_service.get_save_logs()
+        target = next((l for l in logs if l.memory_id == "test-id-garbled-001"), None)
+        assert target is not None
+        assert target.is_garbled is False
+
+    @pytest.mark.asyncio
+    async def test_get_save_logs_garbled_content_detected(self, log_service):
+        """疑似乱码内容（纯问号）的 is_garbled 应为 True。"""
+        await log_service.log_save("????????", "test-id-garbled-002")
+        logs = await log_service.get_save_logs()
+        target = next((l for l in logs if l.memory_id == "test-id-garbled-002"), None)
+        assert target is not None
+        assert target.is_garbled is True
