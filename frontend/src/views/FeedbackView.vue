@@ -117,6 +117,7 @@ import { getAllFeedbackLogs, getValueScore } from '../api'
 import { formatLocalTime } from '../utils/time'
 import type { FeedbackLog, MemoryValueScore } from '../api/types'
 import LogTable from '../components/LogTable.vue'
+import { formatLocalTime } from '../utils/time'
 
 const form = reactive({
   memoryId: '',

@@ -34,6 +34,7 @@ import { computed } from 'vue'
 import { Delete } from '@element-plus/icons-vue'
 import { formatLocalTime } from '../utils/time'
 import type { Memory } from '../api/types'
+import { formatLocalTime } from '../utils/time'
 
 const props = defineProps<{ memory: Memory }>()
 
