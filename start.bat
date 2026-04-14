@@ -96,8 +96,8 @@ if not defined COLD_COLLECTION set "COLD_COLLECTION=cold_memories"
 if not defined STORE_RESPONSE_LIMIT_MS set "STORE_RESPONSE_LIMIT_MS=100"
 if not defined QUERY_RESPONSE_LIMIT_MS set "QUERY_RESPONSE_LIMIT_MS=100"
 if not defined PORT set "PORT=8080"
-REM 强制 Python 使用 UTF-8 模式，确保中文内容在 Windows 上不因 ANSI 代码页而损坏
-REM chcp 65001 仅影响控制台 OEM 代码页（CMD 显示），不影响 Python 的 locale 感知编码
+REM 强制 Python 使用 UTF-8 模式,确保中文内容在 Windows 上不因 ANSI 代码页而损坏
+REM chcp 65001 仅影响控制台 OEM 代码页(CMD 显示),不影响 Python 的 locale 感知编码
 REM PYTHONUTF8=1 才能覆盖 locale.getpreferredencoding() 并修正 open() 默认编码
 if not defined PYTHONUTF8 set "PYTHONUTF8=1"
 if not defined PYTHONIOENCODING set "PYTHONIOENCODING=utf-8"

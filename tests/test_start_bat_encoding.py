@@ -166,6 +166,41 @@ def test_start_bat_is_utf8():
     assert len(decoded) > 0, "start.bat 内容不应为空"
 
 
+def test_start_bat_no_fullwidth_symbols():
+    """
+    测试目的: 验证 start.bat 不含全角中文符号。
+    修复说明: 全角中文符号（：，（）。！等）的 UTF-8 编码字节序形如 EF BC xx，
+              其中第三字节落在 GBK 前导字节范围（0x81-0xFE）内。在部分 Windows
+              系统的 CMD 中，chcp 65001 未能完全生效时，CMD 仍以 GBK 方式解析
+              字节，导致字节边界错位，相关行内容被当作命令执行（如出现
+              "'页（CMD' is not recognized" 等错误）。
+              所有标点应使用 ASCII 半角符号。
+    """
+    content = _read_binary(START_BAT_PATH)
+    decoded = content.decode("utf-8")
+
+    # 需要检测的全角符号列表（按 ai_rules 规范禁止使用的全角符号）
+    fullwidth_symbols = {
+        "：": "U+FF1A 全角冒号",
+        "，": "U+FF0C 全角逗号",
+        "（": "U+FF08 全角左括号",
+        "）": "U+FF09 全角右括号",
+        "。": "U+3002 全角句号",
+        "！": "U+FF01 全角感叹号",
+    }
+
+    found = []
+    for char, desc in fullwidth_symbols.items():
+        if char in decoded:
+            count = decoded.count(char)
+            found.append(f"  {desc}: 出现 {count} 次")
+
+    assert not found, (
+        "start.bat 中发现全角中文符号，必须替换为对应 ASCII 半角符号:\n"
+        + "\n".join(found)
+    )
+
+
 # ---------------------------------------------------------------------------
 # .gitattributes 规则验证
 # ---------------------------------------------------------------------------
