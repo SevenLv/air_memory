@@ -1,7 +1,7 @@
 ﻿# AIR Memory
 Memory System for AI Agent
 
-**当前版本**: v1.2.1
+**当前版本**: v1.2.4
 
 ## 重要说明
 
@@ -71,14 +71,14 @@ graph LR
     FRONTEND --> FE_DIST["dist/（预构建静态文件）"]
     FRONTEND --> FE_TESTS["tests/（Vitest 单元测试）"]
 
-    DOC --> D1["pdd_v1.3.md（产品定义）"]
+    DOC --> D1["pdd_v1.4.md（产品定义）"]
     DOC --> D2["sad_v1.11.md（系统架构设计）"]
     DOC --> D3["tsr_v1.3.md（技术路线选型）"]
     DOC --> D4["tbp_v1.1.md（团队建设计划）"]
-    DOC --> D5["srd_v1.0.md（系统需求定义）"]
+    DOC --> D5["srd_v1.1.md（系统需求定义）"]
     DOC --> D6["deploy_guide.md（部署手册）"]
     DOC --> D7["user_guide.md（用户手册）"]
-    DOC --> D8["release_notes_v1.2.1.md（发布说明）"]
+    DOC --> D8["release_notes_v1.2.4.md（发布说明）"]
 ```
 
 ### 目录说明
