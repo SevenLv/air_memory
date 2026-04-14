@@ -1,7 +1,7 @@
 ﻿# AIR Memory
 Memory System for AI Agent
 
-**当前版本**: v1.2.0
+**当前版本**: v1.2.1
 
 ## 重要说明
 
@@ -78,7 +78,7 @@ graph LR
     DOC --> D5["srd_v1.0.md（系统需求定义）"]
     DOC --> D6["deploy_guide.md（部署手册）"]
     DOC --> D7["user_guide.md（用户手册）"]
-    DOC --> D8["release_notes_v1.2.0.md（发布说明）"]
+    DOC --> D8["release_notes_v1.2.1.md（发布说明）"]
 ```
 
 ### 目录说明

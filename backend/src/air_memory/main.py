@@ -26,9 +26,26 @@ from air_memory.mcp.server import init_mcp_services, mcp
 from air_memory.memory.service import MemoryService
 from air_memory.memory.tier_manager import TierManager
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 
 _logger = logging.getLogger(__name__)
+
+# 修复 Issue #30: 将 root logger 级别重置为 WARNING，防止 MCP 库的 INFO 日志
+# 在 Windows 上引发 CMD 控制台输出，触发 FlashWindowEx 导致任务栏持续闪烁。
+#
+# 原理：FastMCP("AIR_Memory") 在上方模块导入时调用 configure_logging("INFO")，
+# 通过 logging.basicConfig() 在 root logger 上添加 RichHandler 并将级别设为 INFO。
+# 此时 uvicorn 已完成自身 configure_logging（配置 uvicorn.* loggers），但尚未
+# 导入 ASGI app，root logger 没有 handler，basicConfig 得以生效。
+# 结果：mcp.server.* 的 INFO 日志（如每次工具调用的 "Processing request..."）
+# 通过 root logger 的 RichHandler 写入 stderr，CMD 窗口收到输出后
+# Windows 调用 FlashWindowEx(FLASHW_TRAY) 使任务栏橙色闪烁。
+#
+# 修复效果：
+#   - mcp.server.* INFO 日志 -> 被过滤，不输出到控制台
+#   - air_memory.* WARNING/ERROR -> 仍正常输出
+#   - uvicorn.* 所有日志 -> 不受影响（propagate=False，使用独立 handler）
+logging.getLogger().setLevel(logging.WARNING)
 
 # Windows 平台启动时检查 UTF-8 模式，避免中文因 ANSI 代码页被损坏为问号
 # PYTHONUTF8=1 或 python -X utf8 可激活 UTF-8 模式（sys.flags.utf8_mode == 1）
