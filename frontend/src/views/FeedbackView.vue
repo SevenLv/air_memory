@@ -78,7 +78,11 @@
       </template>
       <LogTable :data="feedbackLogs" :loading="loading">
         <el-table-column prop="id" label="ID" width="70" align="center" />
-        <el-table-column prop="created_at" label="时间" width="200" />
+        <el-table-column label="时间" width="200">
+          <template #default="{ row }">
+            {{ formatLocalTime(row.created_at) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="memory_id" label="记忆 ID" show-overflow-tooltip />
         <el-table-column label="反馈结果" width="120" align="center">
           <template #default="{ row }">
@@ -112,6 +116,7 @@ import { Search, Refresh } from '@element-plus/icons-vue'
 import { getAllFeedbackLogs, getValueScore } from '../api'
 import type { FeedbackLog, MemoryValueScore } from '../api/types'
 import LogTable from '../components/LogTable.vue'
+import { formatLocalTime } from '../utils/time'
 
 const form = reactive({
   memoryId: '',
