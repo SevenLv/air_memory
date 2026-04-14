@@ -34,8 +34,8 @@ _logger = logging.getLogger(__name__)
 # PYTHONUTF8=1 或 python -X utf8 可激活 UTF-8 模式（sys.flags.utf8_mode == 1）
 if sys.platform == "win32" and sys.flags.utf8_mode == 0:
     _logger.warning(
-        "Python UTF-8 模式未启用（PYTHONUTF8=1 未设置）。"
-        "在非 CJK Windows（如 CP1252 代码页）上，中文内容可能因 locale 编码被损坏为问号。"
+        "Python UTF-8 模式未启用（PYTHONUTF8=1 未设置）。\n"
+        "在非 CJK Windows（如 CP1252 代码页）上，中文内容可能因 locale 编码被损坏为问号。\n"
         "请在 start.bat 中确认 'set PYTHONUTF8=1' 已生效。"
     )
 

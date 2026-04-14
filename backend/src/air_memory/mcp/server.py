@@ -78,7 +78,10 @@ async def query_memory(
         fast_only: 为 True 时仅检索热层（≤ 100ms），为 False 时同时检索热层和冷层。
 
     Returns:
-        JSON 字符串，包含记忆条目列表，每条包含 id, content, similarity, value_score, tier, created_at。
+        JSON 字符串，包含记忆条目列表。示例结构：
+        [{"id": "...", "content": "记忆内容", "similarity": 0.95,
+          "value_score": 0.6, "tier": "hot", "created_at": "..."}]
+        列表按相似度降序排列，最多返回 top_k 条。
     """
     if _memory_service is None or _log_service is None:
         raise RuntimeError("MCP 服务尚未初始化，请稍后重试")
