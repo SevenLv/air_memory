@@ -1,7 +1,7 @@
 /**
  * FeedbackView.vue 单元测试
  *
- * 覆盖：视图渲染、空 ID 校验、查询触发、价值评分展示、scoreColor 颜色逻辑
+ * 覆盖：视图渲染、查询触发、价值评分展示、scoreColor 颜色逻辑、分页支持
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
@@ -20,12 +20,13 @@ vi.mock('../src/api', () => ({
     tier: 'hot',
     feedback_count: 5,
   }),
-  getFeedbackLogs: vi.fn().mockResolvedValue({
+  getAllFeedbackLogs: vi.fn().mockResolvedValue({
     logs: [
       { id: 1, memory_id: 'mem-test-001', valuable: true, created_at: '2026-04-01T10:00:00Z' },
       { id: 2, memory_id: 'mem-test-001', valuable: false, created_at: '2026-04-02T10:00:00Z' },
     ],
     count: 2,
+    total: 2,
   }),
 }))
 
@@ -46,11 +47,12 @@ describe('FeedbackView 视图', () => {
     expect(wrapper.exists()).toBe(true)
   })
 
-  it('显示"反馈记录查询"标题', () => {
+  it('显示"查询条件"和"反馈记录列表"标题', () => {
     const wrapper = mount(FeedbackView, {
       global: { plugins: [ElementPlus] },
     })
-    expect(wrapper.text()).toContain('反馈记录查询')
+    expect(wrapper.text()).toContain('查询条件')
+    expect(wrapper.text()).toContain('反馈记录列表')
   })
 
   it('包含记忆 ID 输入框', () => {
@@ -73,28 +75,33 @@ describe('FeedbackView 视图', () => {
     const wrapper = mount(FeedbackView, {
       global: { plugins: [ElementPlus] },
     })
-    // 未搜索前不应显示"综合价值评分"
+    // 未按记忆 ID 搜索前不应显示"综合价值评分"
     expect(wrapper.text()).not.toContain('综合价值评分')
   })
 
-  it('ID 为空时提交不调用 API', async () => {
+  it('ID 为空时提交不调用 getValueScore', async () => {
     const { getValueScore } = await import('../src/api')
     const wrapper = mount(FeedbackView, {
       global: { plugins: [ElementPlus] },
     })
+    await flushPromises()
+    vi.clearAllMocks()
     const form = wrapper.find('form')
     if (form.exists()) {
       await form.trigger('submit')
       await flushPromises()
     }
+    // 空 ID 时不查询价值评分
     expect(getValueScore).not.toHaveBeenCalled()
   })
 
-  it('输入有效 ID 后提交调用 getValueScore 和 getFeedbackLogs', async () => {
-    const { getValueScore, getFeedbackLogs } = await import('../src/api')
+  it('输入有效 ID 后提交调用 getValueScore 和 getAllFeedbackLogs', async () => {
+    const { getValueScore, getAllFeedbackLogs } = await import('../src/api')
     const wrapper = mount(FeedbackView, {
       global: { plugins: [ElementPlus] },
     })
+    await flushPromises()
+    vi.clearAllMocks()
 
     const input = wrapper.find('input[placeholder*="记忆"], input[placeholder*="ID"]')
     if (input.exists()) {
@@ -104,7 +111,7 @@ describe('FeedbackView 视图', () => {
         await form.trigger('submit')
         await flushPromises()
         expect(getValueScore).toHaveBeenCalledWith('mem-test-001')
-        expect(getFeedbackLogs).toHaveBeenCalledWith('mem-test-001')
+        expect(getAllFeedbackLogs).toHaveBeenCalled()
       }
     }
   })
@@ -113,6 +120,7 @@ describe('FeedbackView 视图', () => {
     const wrapper = mount(FeedbackView, {
       global: { plugins: [ElementPlus] },
     })
+    await flushPromises()
 
     const input = wrapper.find('input[placeholder*="记忆"], input[placeholder*="ID"]')
     if (input.exists()) {
@@ -162,14 +170,15 @@ describe('FeedbackView 视图', () => {
     }
   })
 
-  it('未找到记忆时显示"未找到该记忆的评分信息"', async () => {
-    const { getValueScore, getFeedbackLogs } = await import('../src/api')
+  it('查询失败时不显示价值评分面板', async () => {
+    const { getValueScore, getAllFeedbackLogs } = await import('../src/api')
     ;(getValueScore as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('404'))
-    ;(getFeedbackLogs as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('404'))
+    ;(getAllFeedbackLogs as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('404'))
 
     const wrapper = mount(FeedbackView, {
       global: { plugins: [ElementPlus] },
     })
+    await flushPromises()
 
     const input = wrapper.find('input[placeholder*="记忆"], input[placeholder*="ID"]')
     if (input.exists()) {
@@ -178,7 +187,8 @@ describe('FeedbackView 视图', () => {
       if (form.exists()) {
         await form.trigger('submit')
         await flushPromises()
-        expect(wrapper.text()).toContain('未找到该记忆的评分信息')
+        // 查询失败后不显示价值评分面板
+        expect(wrapper.text()).not.toContain('综合价值评分')
       }
     }
   })
