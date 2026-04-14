@@ -76,7 +76,7 @@ fi
 
 # ---------- 正常启动 ----------
 echo "=========================================="
-echo " AIR_Memory 一键启动"
+echo " AIR_Memory 一键启动 v1.2.0"
 echo "=========================================="
 
 # 检查 Python 3.11+
@@ -155,6 +155,6 @@ echo ""
 
 # 启动 uvicorn
 exec uvicorn air_memory.main:app \
-    --host 0.0.0.0 \
+    --host 127.0.0.1 \
     --port "$PORT" \
     --app-dir backend/src

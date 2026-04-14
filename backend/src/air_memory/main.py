@@ -24,6 +24,8 @@ from air_memory.mcp.server import init_mcp_services, mcp
 from air_memory.memory.service import MemoryService
 from air_memory.memory.tier_manager import TierManager
 
+APP_VERSION = "1.2.0"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -85,7 +87,7 @@ async def _disk_check_loop(disk_mgr: DiskManager) -> None:
 
 app = FastAPI(
     title="AIR_Memory",
-    version="1.0.0",
+    version=APP_VERSION,
     description="AIR_Memory 后端服务 - 为 AI Agent 提供记忆存储和查询能力",
     lifespan=lifespan,
 )
@@ -115,6 +117,12 @@ app.mount("/mcp", mcp.streamable_http_app())
 async def health_check() -> dict:
     """健康检查接口。"""
     return {"status": "ok"}
+
+
+@app.get("/api/v1/version", tags=["system"])
+async def get_version() -> dict:
+    """获取系统版本号。"""
+    return {"version": APP_VERSION}
 
 
 # 前端静态文件服务：从环境变量获取构建产物目录，默认 frontend/dist（相对于工作目录）

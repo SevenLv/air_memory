@@ -22,7 +22,7 @@ if /i "%1"=="/uninstall" goto :uninstall_task
 
 REM ---------- 正常启动 ----------
 echo ==========================================
-echo  AIR_Memory 一键启动
+echo  AIR_Memory 一键启动 v1.2.0
 echo ==========================================
 
 REM 检查 Python 3.11+
@@ -108,7 +108,7 @@ echo  停止服务: 关闭此窗口或按 Ctrl+C
 echo ==========================================
 echo.
 
-uvicorn air_memory.main:app --host 0.0.0.0 --port !PORT! --app-dir backend\src
+uvicorn air_memory.main:app --host 127.0.0.1 --port !PORT! --app-dir backend\src
 goto :eof
 
 REM ---------- 安装 Task Scheduler 自启动 ----------
