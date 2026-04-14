@@ -64,9 +64,10 @@ describe('MemoryCard 组件', () => {
     expect(wrapper.text()).toContain(coldMemory.id)
   })
 
-  it('显示创建时间', () => {
+  it('显示创建时间（本地时间格式）', () => {
     const wrapper = mountMemoryCard(coldMemory)
-    expect(wrapper.text()).toContain(coldMemory.created_at)
+    // 本地时间格式：YYYY-MM-DD HH:mm:ss
+    expect(wrapper.text()).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/)
   })
 
   it('冷层记忆显示"冷层"标签', () => {

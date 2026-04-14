@@ -89,6 +89,7 @@
 import { ref, onMounted } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import { useLogStore } from '../stores/log'
+import { formatLocalTime } from '../utils/time'
 import LogTable from '../components/LogTable.vue'
 import { formatLocalTime } from '../utils/time'
 
