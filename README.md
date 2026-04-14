@@ -15,6 +15,10 @@ Memory System for AI Agent
 
 ## 快速开始
 
+### 获取发布包
+
+前往 [GitHub Releases 页面](https://github.com/SevenLv/air_memory/releases/latest)，下载最新版本的发布包并解压。
+
 ### 环境前提
 
 - Python 3.11 或更高版本
