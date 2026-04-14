@@ -17,6 +17,27 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
+      - name: 配置多版本 Python（用于编译字节码）
+        uses: actions/setup-python@v5
+        with:
+          python-version: |
+            3.11
+            3.12
+            3.13
+
+      - name: 编译 Python 源码为字节码（多版本）
+        run: |
+          for pyver in python3.11 python3.12 python3.13; do
+            if command -v "$pyver" &>/dev/null; then
+              echo "[编译] 使用 $($pyver --version) 编译字节码..."
+              "$pyver" -m compileall -j 0 -q --invalidation-mode unchecked-hash backend/src/
+            else
+              echo "[跳过] $pyver 未找到"
+            fi
+          done
+          echo "[验证] 生成的字节码文件："
+          find backend/src -name "*.pyc" | head -20
+
       - name: 构建发布包
         run: |
           TAG="${{ github.event.inputs.tag }}"
@@ -34,8 +55,29 @@ jobs:
           cp -r doc "${PKG_DIR}/"
 
           # 复制 backend（排除 tests/、Dockerfile 和 coverage.json 等开发文件）
-          cp backend/pyproject.toml backend/requirements.txt "${PKG_DIR}/backend/"
+          # 仅保留 requirements.txt（启动时安装第三方依赖用）
+          cp backend/requirements.txt "${PKG_DIR}/backend/"
+
+          # 复制整个 src 目录（含 __pycache__/ 中编译好的 .pyc）
           cp -r backend/src "${PKG_DIR}/backend/"
+
+          # 将所有 .py 源码替换为空桩文件（保留文件以使 Python 导入机制正常工作，
+          # 但不含任何业务逻辑；加载时 Python 会直接使用 unchecked-hash .pyc）
+          find "${PKG_DIR}/backend/src" -name "*.py" -exec sh -c 'printf "" > "$1"' _ {} \;
+
+          # 验证：确认 .pyc 存在且 .py 均为空桩（无业务逻辑）
+          PYC_COUNT=$(find "${PKG_DIR}/backend/src" -name "*.pyc" | wc -l)
+          PY_NONEMPTY=$(find "${PKG_DIR}/backend/src" -name "*.py" -size +0c | wc -l)
+          echo "[验证] .pyc 文件数: ${PYC_COUNT}（期望: >0）"
+          echo "[验证] 非空 .py 文件数: ${PY_NONEMPTY}（期望: 0）"
+          if [ "${PYC_COUNT}" -eq 0 ]; then
+            echo "[错误] 未找到 .pyc 文件，编译步骤可能失败！"
+            exit 1
+          fi
+          if [ "${PY_NONEMPTY}" -ne 0 ]; then
+            echo "[错误] 存在非空 .py 文件，源码未正确清除！"
+            exit 1
+          fi
 
           # 复制预构建的前端静态文件（排除 src/ 等开发文件）
           cp -r frontend/dist "${PKG_DIR}/frontend/"
