@@ -63,11 +63,11 @@ jobs:
 
           # 将所有 .py 源码替换为空桩文件（保留文件以使 Python 导入机制正常工作，
           # 但不含任何业务逻辑；加载时 Python 会直接使用 unchecked-hash .pyc）
-          find "${PKG_DIR}/backend/src" -name "*.py" -exec sh -c 'printf "" > "$1"' _ {} \;
+          find "${PKG_DIR}/backend/src" -name "*.py" -type f -exec truncate -s 0 {} +
 
           # 验证：确认 .pyc 存在且 .py 均为空桩（无业务逻辑）
-          PYC_COUNT=$(find "${PKG_DIR}/backend/src" -name "*.pyc" | wc -l)
-          PY_NONEMPTY=$(find "${PKG_DIR}/backend/src" -name "*.py" -size +0c | wc -l)
+          PYC_COUNT=$(find "${PKG_DIR}/backend/src" -name "*.pyc" | wc -l | xargs)
+          PY_NONEMPTY=$(find "${PKG_DIR}/backend/src" -name "*.py" -size +0c | wc -l | xargs)
           echo "[验证] .pyc 文件数: ${PYC_COUNT}（期望: >0）"
           echo "[验证] 非空 .py 文件数: ${PY_NONEMPTY}（期望: 0）"
           if [ "${PYC_COUNT}" -eq 0 ]; then
