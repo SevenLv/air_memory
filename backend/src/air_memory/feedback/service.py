@@ -96,6 +96,64 @@ class FeedbackService:
             for row in rows
         ]
 
+    async def get_all_feedback_logs(
+        self,
+        page: int = 1,
+        page_size: int = 20,
+        memory_id: str | None = None,
+        start_time: str | None = None,
+        end_time: str | None = None,
+    ) -> tuple[list[FeedbackLog], int]:
+        """查询所有反馈记录（支持时间段、记忆 ID 过滤和分页）。
+
+        返回 (logs, total)，total 为符合条件的总条数。
+        """
+        offset = (page - 1) * page_size
+
+        # 构建 WHERE 子句
+        conditions = []
+        params = []
+        if memory_id:
+            conditions.append("memory_id = ?")
+            params.append(memory_id)
+        if start_time:
+            conditions.append("created_at >= ?")
+            params.append(start_time)
+        if end_time:
+            conditions.append("created_at <= ?")
+            params.append(end_time)
+
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        async with aiosqlite.connect(settings.DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+
+            # 查询总条数
+            count_sql = f"SELECT COUNT(*) as total FROM feedback_logs {where_clause}"
+            async with db.execute(count_sql, params) as cursor:
+                row = await cursor.fetchone()
+            total = row["total"] if row else 0
+
+            # 查询当前页数据
+            data_sql = (
+                f"SELECT id, memory_id, valuable, created_at FROM feedback_logs {where_clause}"
+                f" ORDER BY id DESC LIMIT ? OFFSET ?"
+            )
+            data_params = params + [page_size, offset]
+            async with db.execute(data_sql, data_params) as cursor:
+                rows = await cursor.fetchall()
+
+        logs = [
+            FeedbackLog(
+                id=row["id"],
+                memory_id=row["memory_id"],
+                valuable=bool(row["valuable"]),
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]
+        return logs, total
+
     async def get_memory_value_score(self, memory_id: str) -> dict | None:
         """查询指定记忆当前综合价值评分。"""
         async with aiosqlite.connect(settings.DB_PATH) as db:

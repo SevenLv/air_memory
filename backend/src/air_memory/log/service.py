@@ -19,6 +19,19 @@ class LogService:
 
     async def log_save(self, content: str, memory_id: str) -> None:
         """异步写入存储操作日志。"""
+        # 防御性检查：检测内容是否疑似乱码（大量问号占据非 ASCII 内容）
+        # 这通常是 Windows 非 CJK 环境下 PYTHONUTF8=1 未生效时的特征
+        if content:
+            non_ascii = [c for c in content if not c.isascii()]
+            if non_ascii:
+                question_ratio = content.count('?') / len(content)
+                if question_ratio > 0.3:
+                    import logging as _log
+                    _log.getLogger(__name__).warning(
+                        "save_log 内容疑似乱码（问号比例 %.0f%%），"
+                        "请确认 start 脚本中 PYTHONUTF8=1 已正确生效。memory_id=%s",
+                        question_ratio * 100, memory_id,
+                    )
         async with aiosqlite.connect(settings.DB_PATH) as db:
             await db.execute(
                 "INSERT INTO save_logs (memory_id, content, created_at, memory_deleted)"
