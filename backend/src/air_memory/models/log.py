@@ -11,6 +11,7 @@ class SaveLog(BaseModel):
     content: str
     created_at: str
     memory_deleted: bool
+    is_garbled: bool = False  # 新增：服务端计算的乱码检测结果
 
 
 class SaveLogsResponse(BaseModel):

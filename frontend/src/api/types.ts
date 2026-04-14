@@ -22,6 +22,7 @@ export interface SaveLog {
   content: string
   created_at: string
   memory_deleted: boolean
+  is_garbled: boolean  // 新增：服务端计算的乱码检测结果（v1.2.5+）
 }
 
 /** 存储操作日志响应 */

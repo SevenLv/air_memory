@@ -14,24 +14,42 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _is_garbled(content: str) -> bool:
+    """检测内容是否疑似乱码（CP1252 问号损坏或其他编码损坏）。
+
+    场景一：纯 ???? 模式（CP1252 编码失败，中文 → 纯 ASCII 问号）
+      - 内容全为 ASCII，但问号占比 > 50%，且长度 >= 2
+    场景二：混合模式（含非 ASCII 字符，且问号占比 > 30%）
+    """
+    if not content:
+        return False
+    length = len(content)
+    if length < 2:
+        return False
+    question_count = content.count('?')
+    question_ratio = question_count / length
+    # 场景一：纯 ASCII 问号（CP1252 损坏）
+    has_non_ascii = any(not c.isascii() for c in content)
+    if not has_non_ascii and question_ratio > 0.5:
+        return True
+    # 场景二：混合乱码（含非 ASCII 且高问号占比）
+    if has_non_ascii and question_ratio > 0.3:
+        return True
+    return False
+
+
 class LogService:
     """操作日志服务，负责记录存储和查询操作日志。"""
 
     async def log_save(self, content: str, memory_id: str) -> None:
         """异步写入存储操作日志。"""
-        # 防御性检查：检测内容是否疑似乱码（大量问号占据非 ASCII 内容）
-        # 这通常是 Windows 非 CJK 环境下 PYTHONUTF8=1 未生效时的特征
-        if content:
-            non_ascii = [c for c in content if not c.isascii()]
-            if non_ascii:
-                question_ratio = content.count('?') / len(content)
-                if question_ratio > 0.3:
-                    import logging as _log
-                    _log.getLogger(__name__).warning(
-                        "save_log 内容疑似乱码（问号比例 %.0f%%），"
-                        "请确认 start 脚本中 PYTHONUTF8=1 已正确生效。memory_id=%s",
-                        question_ratio * 100, memory_id,
-                    )
+        if content and _is_garbled(content):
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "save_log 内容疑似乱码（问号比例过高），"
+                "请确认 start 脚本中 PYTHONUTF8=1 已正确生效。memory_id=%s",
+                memory_id,
+            )
         async with aiosqlite.connect(settings.DB_PATH) as db:
             await db.execute(
                 "INSERT INTO save_logs (memory_id, content, created_at, memory_deleted)"
@@ -68,6 +86,7 @@ class LogService:
                 content=row["content"],
                 created_at=row["created_at"],
                 memory_deleted=bool(row["memory_deleted"]),
+                is_garbled=_is_garbled(row["content"]),
             )
             for row in rows
         ]

@@ -24,7 +24,7 @@
           <el-table-column prop="memory_id" label="记忆 ID" width="240" show-overflow-tooltip />
           <el-table-column label="原始内容" min-width="200" show-overflow-tooltip>
             <template #default="{ row }">
-              <span v-if="isGarbled(row.content)">
+              <span v-if="isGarbled(row)">
                 <el-tooltip
                   content="此记录内容疑似因编码问题损坏（历史遗留），新版本新增的记忆不受影响"
                   placement="top"
@@ -91,7 +91,7 @@ import { Refresh } from '@element-plus/icons-vue'
 import { useLogStore } from '../stores/log'
 import { formatLocalTime } from '../utils/time'
 import LogTable from '../components/LogTable.vue'
-import { formatLocalTime } from '../utils/time'
+import type { SaveLog } from '../api/types'
 
 const logStore = useLogStore()
 const activeTab = ref('save')
@@ -107,14 +107,24 @@ function parseResultsSummary(results: string): string {
   }
 }
 
-/** 检测内容是否疑似乱码（主要特征：含有非 ASCII 字符时问号占比 > 30%） */
-function isGarbled(content: string): boolean {
+/** 判断存储日志内容是否疑似乱码
+ * 优先使用服务端计算的 is_garbled 字段（v1.2.5+），兜底使用客户端检测 */
+function isGarbled(row: SaveLog): boolean {
+  // 优先信任服务端权威结果
+  if (typeof row.is_garbled === 'boolean') {
+    return row.is_garbled
+  }
+  // 兜底：客户端检测（兼容旧版 API）
+  const content = row.content
   if (!content || content.length === 0) return false
-  // 纯 ASCII 内容不视为乱码
-  const hasNonAscii = [...content].some((c) => c.charCodeAt(0) > 127)
-  if (!hasNonAscii) return false
   const questionCount = (content.match(/\?/g) ?? []).length
-  return questionCount / content.length > 0.3
+  const questionRatio = questionCount / content.length
+  // 场景一：纯 ASCII 问号（CP1252 损坏）
+  const hasNonAscii = [...content].some((c) => c.charCodeAt(0) > 127)
+  if (!hasNonAscii && questionRatio > 0.5 && content.length >= 2) return true
+  // 场景二：混合乱码
+  if (hasNonAscii && questionRatio > 0.3) return true
+  return false
 }
 
 /** 切换标签时按需加载数据 */
