@@ -162,4 +162,5 @@ exec uvicorn air_memory.main:app \
     --host 127.0.0.1 \
     --port "$PORT" \
     --app-dir backend/src \
-    --no-access-log
+    --no-access-log \
+    --log-level warning

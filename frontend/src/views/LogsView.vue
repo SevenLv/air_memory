@@ -16,7 +16,11 @@
         </div>
         <LogTable :data="logStore.saveLogs" :loading="logStore.saveLoading">
           <el-table-column prop="id" label="ID" width="70" align="center" />
-          <el-table-column prop="created_at" label="时间" width="200" />
+          <el-table-column label="时间" width="200">
+            <template #default="{ row }">
+              {{ formatLocalTime(row.created_at) }}
+            </template>
+          </el-table-column>
           <el-table-column prop="memory_id" label="记忆 ID" width="240" show-overflow-tooltip />
           <el-table-column label="原始内容" min-width="200" show-overflow-tooltip>
             <template #default="{ row }">
@@ -57,7 +61,11 @@
         </div>
         <LogTable :data="logStore.queryLogs" :loading="logStore.queryLoading">
           <el-table-column prop="id" label="ID" width="70" align="center" />
-          <el-table-column prop="created_at" label="时间" width="200" />
+          <el-table-column label="时间" width="200">
+            <template #default="{ row }">
+              {{ formatLocalTime(row.created_at) }}
+            </template>
+          </el-table-column>
           <el-table-column prop="query" label="查询条件" show-overflow-tooltip />
           <el-table-column label="查询模式" width="120" align="center">
             <template #default="{ row }">
@@ -81,6 +89,7 @@
 import { ref, onMounted } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import { useLogStore } from '../stores/log'
+import { formatLocalTime } from '../utils/time'
 import LogTable from '../components/LogTable.vue'
 import type { SaveLog } from '../api/types'
 

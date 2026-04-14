@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, ORJSONResponse
 from fastapi.staticfiles import StaticFiles
 from sentence_transformers import SentenceTransformer
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -61,6 +61,7 @@ logging.getLogger().setLevel(logging.WARNING)
 # 某些库（chromadb、sentence_transformers 等）有自己的 logger handler，
 # 不受 root logger 级别控制，需单独抑制
 for _noisy_lib in [
+    "anyio", "anyio._backends._asyncio", "anyio._backends._trio",
     "chromadb", "chromadb.api", "chromadb.db",
     "sentence_transformers",
     "transformers", "transformers.tokenization_utils_base",
@@ -141,6 +142,7 @@ app = FastAPI(
     title="AIR_Memory",
     version=APP_VERSION,
     description="AIR_Memory 后端服务 - 为 AI Agent 提供记忆存储和查询能力",
+    default_response_class=ORJSONResponse,  # 新增：输出真实 UTF-8 字符，避免 \uXXXX 转义
     lifespan=lifespan,
     docs_url="/api/v1/docs",
     redoc_url="/api/v1/redoc",

@@ -113,7 +113,7 @@ echo  停止服务: 关闭此窗口或按 Ctrl+C
 echo ==========================================
 echo.
 
-uvicorn air_memory.main:app --host 127.0.0.1 --port !PORT! --app-dir backend\src --no-access-log
+uvicorn air_memory.main:app --host 127.0.0.1 --port !PORT! --app-dir backend\src --no-access-log --log-level warning
 goto :eof
 
 REM ---------- 安装 Task Scheduler 自启动 ----------

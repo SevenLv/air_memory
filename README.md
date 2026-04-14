@@ -1,7 +1,7 @@
 ﻿# AIR Memory
 Memory System for AI Agent
 
-**当前版本**: v1.2.4
+**当前版本**: v1.2.5
 
 ## 重要说明
 
