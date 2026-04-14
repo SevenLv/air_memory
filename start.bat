@@ -22,7 +22,7 @@ if /i "%1"=="/uninstall" goto :uninstall_task
 
 REM ---------- 正常启动 ----------
 echo ==========================================
-echo  AIR_Memory 一键启动 v1.2.5
+echo  AIR_Memory 一键启动 v1.2.6
 echo ==========================================
 
 REM 检查 Python 3.11+
@@ -99,8 +99,9 @@ if not defined PORT set "PORT=8080"
 REM 强制 Python 使用 UTF-8 模式,确保中文内容在 Windows 上不因 ANSI 代码页而损坏
 REM chcp 65001 仅影响控制台 OEM 代码页(CMD 显示),不影响 Python 的 locale 感知编码
 REM PYTHONUTF8=1 才能覆盖 locale.getpreferredencoding() 并修正 open() 默认编码
-if not defined PYTHONUTF8 set "PYTHONUTF8=1"
-if not defined PYTHONIOENCODING set "PYTHONIOENCODING=utf-8"
+REM 注意：此处强制覆盖（不使用 if not defined），防止系统/用户设置 PYTHONUTF8=0 导致中文乱码
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
 
 echo [4/4] 启动 AIR_Memory 服务...
 echo.

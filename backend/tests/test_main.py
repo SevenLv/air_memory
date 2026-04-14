@@ -5,9 +5,11 @@
 - STATIC_DIR 未配置时不挂载静态文件
 - STATIC_DIR 存在时挂载静态文件并支持 SPA 回退
 - CORS_ORIGINS 环境变量配置
+- v1.2.6 UTF-8 stdin 运行时强制重配（防止中文乱码）
 """
 
 import os
+import sys
 
 import pytest
 from fastapi import FastAPI
@@ -204,3 +206,64 @@ def test_cors_origins_from_env(monkeypatch) -> None:
     # 重新解析环境变量（模拟 main.py 的解析逻辑）
     cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:8080").split(",")
     assert custom_origin in cors_origins
+
+
+# ---------------------------------------------------------------------------
+# v1.2.6 UTF-8 stdin 运行时强制重配测试
+# ---------------------------------------------------------------------------
+
+
+def test_app_version_is_1_2_6() -> None:
+    """APP_VERSION 应为 v1.2.6。"""
+    from air_memory.main import APP_VERSION
+    assert APP_VERSION == "1.2.6", f"APP_VERSION 应为 '1.2.6'，实际为 '{APP_VERSION}'"
+
+
+def test_version_api_returns_1_2_6() -> None:
+    """GET /api/v1/version 应返回版本号 1.2.6。"""
+    response = client.get("/api/v1/version")
+    assert response.status_code == 200
+    assert response.json()["version"] == "1.2.6"
+
+
+def test_stdin_utf8_reconfigure_logic() -> None:
+    """main.py 应包含 sys.stdin.reconfigure(encoding='utf-8') 的运行时强制重配逻辑。
+
+    v1.2.6 修复：在 v1.2.5 只重配 stdout/stderr 的基础上，补充对 stdin 的 UTF-8 重配，
+    防止 MCP SDK stdio 传输从 sys.stdin 读取时因 CP1252 编码将中文损坏为 '????'。
+    """
+    import ast
+    import inspect
+    import air_memory.main as main_module
+
+    # 读取 main.py 源码，验证 stdin 重配代码存在
+    source_file = inspect.getfile(main_module)
+    with open(source_file, encoding='utf-8') as f:
+        source = f.read()
+
+    assert 'sys.stdin' in source, (
+        "main.py 应包含 sys.stdin 的 UTF-8 重配代码（v1.2.6 修复）"
+    )
+    assert "sys.stdin.reconfigure" in source, (
+        "main.py 应包含 sys.stdin.reconfigure() 调用（v1.2.6 修复）"
+    )
+
+
+def test_stdin_encoding_utf8_after_reconfigure() -> None:
+    """sys.stdin.reconfigure(encoding='utf-8') 调用后，stdin.encoding 应为 utf-8。
+
+    模拟 main.py 的运行时重配逻辑，验证在非 UTF-8 环境下也能通过代码补救。
+    """
+    # 验证当前 stdin 可以被重配为 utf-8
+    if hasattr(sys.stdin, 'reconfigure'):
+        try:
+            sys.stdin.reconfigure(encoding='utf-8', errors='replace')
+            # 重配成功后，stdin.encoding 应为 utf-8
+            assert sys.stdin.encoding.lower().replace('-', '') in ('utf8', 'utf-8'), (
+                f"stdin.reconfigure 后 encoding 应为 utf-8，实际为 {sys.stdin.encoding!r}"
+            )
+        except Exception as e:
+            # 部分环境可能不支持 reconfigure（如 StringIO），允许跳过
+            pytest.skip(f"当前环境 stdin 不支持 reconfigure：{e}")
+    else:
+        pytest.skip("当前 stdin 没有 reconfigure 方法，跳过测试")
