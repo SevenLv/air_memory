@@ -26,7 +26,7 @@ from air_memory.mcp.server import init_mcp_services, mcp
 from air_memory.memory.service import MemoryService
 from air_memory.memory.tier_manager import TierManager
 
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 
 _logger = logging.getLogger(__name__)
 
@@ -118,6 +118,9 @@ app = FastAPI(
     version=APP_VERSION,
     description="AIR_Memory 后端服务 - 为 AI Agent 提供记忆存储和查询能力",
     lifespan=lifespan,
+    docs_url="/api/v1/docs",
+    redoc_url="/api/v1/redoc",
+    openapi_url="/api/v1/openapi.json",
 )
 
 # CORS 配置：允许前端访问，支持通过 CORS_ORIGINS 环境变量自定义来源（逗号分隔）
