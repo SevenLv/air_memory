@@ -17,26 +17,37 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 配置多版本 Python（用于编译字节码）
+      - name: 配置 Python 3.11（编译 cpython-311 字节码）
         uses: actions/setup-python@v5
         with:
-          python-version: |
-            3.11
-            3.12
-            3.13
+          python-version: "3.11"
 
-      - name: 编译 Python 源码为字节码（多版本）
+      - name: 编译 Python 3.11 字节码
         run: |
-          for pyver in python3.11 python3.12 python3.13; do
-            if command -v "$pyver" &>/dev/null; then
-              echo "[编译] 使用 $($pyver --version) 编译字节码..."
-              "$pyver" -m compileall -j 0 -q --invalidation-mode unchecked-hash backend/src/
-            else
-              echo "[跳过] $pyver 未找到"
-            fi
-          done
-          echo "[验证] 生成的字节码文件："
-          find backend/src -name "*.pyc" | head -20
+          python -m compileall -j 0 -q --invalidation-mode unchecked-hash backend/src/
+          echo "[验证] Python 3.11 字节码文件数: $(find backend/src -name "*.cpython-311.pyc" | wc -l)"
+
+      - name: 配置 Python 3.12（编译 cpython-312 字节码）
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 编译 Python 3.12 字节码
+        run: |
+          python -m compileall -j 0 -q --invalidation-mode unchecked-hash backend/src/
+          echo "[验证] Python 3.12 字节码文件数: $(find backend/src -name "*.cpython-312.pyc" | wc -l)"
+
+      - name: 配置 Python 3.13（编译 cpython-313 字节码）
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: 编译 Python 3.13 字节码
+        run: |
+          python -m compileall -j 0 -q --invalidation-mode unchecked-hash backend/src/
+          echo "[验证] Python 3.13 字节码文件数: $(find backend/src -name "*.cpython-313.pyc" | wc -l)"
+          echo "[验证] 全部字节码文件："
+          find backend/src -name "*.pyc" | head -30
 
       - name: 构建发布包
         run: |
@@ -66,8 +77,8 @@ jobs:
           find "${PKG_DIR}/backend/src" -name "*.py" -type f -exec truncate -s 0 {} +
 
           # 验证：确认 .pyc 存在且 .py 均为空桩（无业务逻辑）
-          PYC_COUNT=$(find "${PKG_DIR}/backend/src" -name "*.pyc" | wc -l | xargs)
-          PY_NONEMPTY=$(find "${PKG_DIR}/backend/src" -name "*.py" -size +0c | wc -l | xargs)
+          PYC_COUNT=$(find "${PKG_DIR}/backend/src" -name "*.pyc" | wc -l)
+          PY_NONEMPTY=$(find "${PKG_DIR}/backend/src" -name "*.py" -size +0c | wc -l)
           echo "[验证] .pyc 文件数: ${PYC_COUNT}（期望: >0）"
           echo "[验证] 非空 .py 文件数: ${PY_NONEMPTY}（期望: 0）"
           if [ "${PYC_COUNT}" -eq 0 ]; then
