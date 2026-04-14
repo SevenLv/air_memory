@@ -17,12 +17,41 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
+      - name: 构建发布包
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          PKG_NAME="air_memory-${TAG}"
+          PKG_DIR="${PKG_NAME}"
+
+          # 创建发布包目录结构
+          mkdir -p "${PKG_DIR}/backend"
+          mkdir -p "${PKG_DIR}/frontend"
+
+          # 复制根目录文件
+          cp README.md start.sh start.bat "${PKG_DIR}/"
+
+          # 复制文档目录
+          cp -r doc "${PKG_DIR}/"
+
+          # 复制 backend（排除 tests/、Dockerfile 和 coverage.json 等开发文件）
+          cp backend/pyproject.toml backend/requirements.txt "${PKG_DIR}/backend/"
+          cp -r backend/src "${PKG_DIR}/backend/"
+
+          # 复制预构建的前端静态文件（排除 src/ 等开发文件）
+          cp -r frontend/dist "${PKG_DIR}/frontend/"
+
+          # 打包为 zip（内部顶级目录为 air_memory-{tag}/）
+          zip -r "${PKG_NAME}.zip" "${PKG_DIR}/"
+
+          echo "PKG_NAME=${PKG_NAME}" >> "$GITHUB_ENV"
+
       - name: 创建 GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ github.event.inputs.tag }}" \
             --title "AIR_Memory ${{ github.event.inputs.tag }}" \
-            --notes-file doc/release_notes_v1.2.5.md \
+            --notes-file doc/release_notes_v1.2.6.md \
+            "${PKG_NAME}.zip" \
             doc/deploy_guide.md \
             doc/user_guide.md
