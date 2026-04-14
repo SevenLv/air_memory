@@ -5,6 +5,7 @@
 | 版本号 | 变更时间 | 变更内容 |
 | --- | --- | --- |
 | 1.0 | 2026-4-10 | 初稿，覆盖 Web 管理界面和 AI Agent 接口使用说明 |
+| 1.1 | 2026-4-14 | 补充 Header 版本号显示说明；修正 MCP query_memory 返回示例格式（平铺列表 JSON 字符串）|
 
 ---
 
@@ -32,6 +33,8 @@ graph LR
     Nav --> Logs["/logs - 操作日志"]
     Nav --> Feedback["/feedback - 价值评分"]
 ```
+
+顶部导航栏右侧动态显示当前运行的系统版本号（通过 `GET /api/v1/version` 接口获取），便于快速确认所运行的版本。
 
 ### 2.2 记忆查询（首页 `/`）
 
@@ -229,24 +232,22 @@ AIR_Memory MCP Server 暴露以下三个工具：
 }
 ```
 
-返回示例：
+返回示例（JSON 字符串，内容为记忆条目平铺列表）：
 
 ```json
-{
-  "memories": [
-    {
-      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "content": "用户偏好使用深色主题，字体大小设置为 16px",
-      "similarity": 0.92,
-      "value_score": 0.6,
-      "tier": "hot",
-      "created_at": "2026-04-10T08:00:00Z"
-    }
-  ],
-  "count": 1,
-  "query_mode": "fast"
-}
+[
+  {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "content": "用户偏好使用深色主题，字体大小设置为 16px",
+    "similarity": 0.92,
+    "value_score": 0.6,
+    "tier": "hot",
+    "created_at": "2026-04-10T08:00:00Z"
+  }
+]
 ```
+
+> **说明**：MCP `query_memory` 直接返回记忆条目的平铺列表（JSON 字符串），与 REST API 响应结构（含 `memories`、`count`、`query_mode` 字段的对象）不同。列表按相似度降序排列，最多返回 `top_k` 条。
 
 **提交价值反馈**（`feedback_memory`）：
 
