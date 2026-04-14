@@ -1,6 +1,7 @@
 """MCP Server 模块，使用 mcp Python SDK 暴露记忆存储、查询和反馈工具。"""
 
 import asyncio
+import json
 from typing import TYPE_CHECKING
 
 from mcp.server.fastmcp import FastMCP
@@ -68,7 +69,7 @@ async def query_memory(
     query: str,
     top_k: int = 5,
     fast_only: bool = False,
-) -> list[dict]:
+) -> str:
     """查询相关记忆。
 
     Args:
@@ -77,7 +78,7 @@ async def query_memory(
         fast_only: 为 True 时仅检索热层（≤ 100ms），为 False 时同时检索热层和冷层。
 
     Returns:
-        记忆条目列表，每条包含 id, content, similarity, value_score, tier, created_at。
+        JSON 字符串，包含记忆条目列表，每条包含 id, content, similarity, value_score, tier, created_at。
     """
     if _memory_service is None or _log_service is None:
         raise RuntimeError("MCP 服务尚未初始化，请稍后重试")
@@ -85,7 +86,9 @@ async def query_memory(
     memories = await _memory_service.query(query, top_k, fast_only)
     results = [m.model_dump() for m in memories]
     asyncio.create_task(_log_service.log_query(query, results, fast_only))
-    return results
+    # 返回整体 JSON 字符串，避免 MCP SDK 将 list[dict] 拆分为多个 TextContent 块
+    # ensure_ascii=False 确保中文字符直接输出，而非 \uXXXX 转义
+    return json.dumps(results, ensure_ascii=False)
 
 
 @mcp.tool()
