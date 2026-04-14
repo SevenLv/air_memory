@@ -7,21 +7,21 @@
 
 ## 概述
 
-v1.2.5 包含 4 项 Bug 修复。主要变更为：修复存储操作日志乱码徽章检测失效问题（v1.2.4 引入的乱码徽章功能实际失效）、彻底修复 Windows 浏览器持续激活问题（Issue #46）、修复存储操作日志在 F12 中显示为 Unicode 转义序列的问题（Issue #47）、以及修复 UI 时间字段显示 UTC 而非本地时间的问题（Issue #45）。不包含 Breaking Change，直接升级即可。
+v1.2.5 包含 3 项 Bug 修复。主要变更为：修复存储操作日志乱码问题（乱码徽章检测失效 + F12 中显示 Unicode 转义序列，Issue #47）、彻底修复 Windows 浏览器持续激活问题（Issue #46）、以及修复 UI 时间字段显示 UTC 而非本地时间的问题（Issue #45）。不包含 Breaking Change，直接升级即可。
 
 ---
 
 ## 修复问题
 
-### 1. 存储操作日志乱码徽章不显示
+### 1. 存储操作日志乱码问题（Issue #47）
 
 **问题描述**
 
-v1.2.4 为存储操作日志新增了乱码内容检测和"乱码"徽章显示功能，但实际使用时徽章从不出现，乱码内容（大量问号）直接裸露显示在"原始内容"列中。从浏览器 F12 可确认后台响应数据本身已携带乱码，查询操作日志则正常显示中文。
+v1.2.4 为存储操作日志新增了乱码内容检测和"乱码"徽章显示功能，但实际使用时徽章从不出现，乱码内容（大量问号）直接裸露显示在"原始内容"列中。此外，通过浏览器 F12 开发者工具 Network 面板查看"存储操作日志"的后台响应时，中文内容显示为 `\u4e2d\u6587` 形式的 Unicode 转义序列，而"查询操作日志"中可正常显示中文。
 
 **根因分析**
 
-v1.2.4 的前端 `isGarbled()` 函数以"内容中是否含非 ASCII 字符"作为检测前置条件：
+**乱码徽章不显示**：v1.2.4 的前端 `isGarbled()` 函数以"内容中是否含非 ASCII 字符"作为检测前置条件：
 
 ```typescript
 // v1.2.4 旧逻辑（有误）
@@ -33,7 +33,11 @@ if (nonAscii.length > 0) {
 
 然而 Windows CP1252 编码失败的产物 `????` 是纯 ASCII 问号，不含任何非 ASCII 字符，导致检测逻辑被完全绕过，乱码徽章永远不会显示。后端 `log/service.py` 的 `isGarbled()` 存在相同的逻辑漏洞。
 
+**F12 Unicode 转义序列**：FastAPI 默认使用 Python 标准库 `json` 模块序列化响应，其 `ensure_ascii=True` 默认值会将所有非 ASCII 字符（包括中文）转换为 `\uXXXX` 形式的转义序列。虽然浏览器能正确解析为中文并在 UI 中显示，但在 F12 原始响应视图中显示为转义序列。
+
 **修复方案**
+
+**乱码徽章检测**：
 
 1. **后端**（`log/service.py`）：提取独立函数 `_is_garbled()`，修复检测逻辑，移除"必须含非 ASCII"的前置条件，增加"纯 ASCII 问号占比 > 50%"场景。每次读取存储日志时动态计算并写入 `SaveLog.is_garbled` 字段。
 
@@ -43,9 +47,15 @@ if (nonAscii.length > 0) {
 
 4. **前端**（`types.ts`）：`SaveLog` 接口新增 `is_garbled: boolean` 字段。
 
+**F12 Unicode 转义**：
+
+5. `backend/requirements.txt` 和 `backend/pyproject.toml`：添加 `orjson>=3.9` 依赖（Rust 实现的高性能 JSON 库，FastAPI 官方推荐）。
+
+6. `backend/src/air_memory/main.py`：在 FastAPI 实例化时设置 `default_response_class=ORJSONResponse`。`orjson` 默认 `ensure_ascii=False`，所有 API 响应将直接输出真实 UTF-8 中文字符。
+
 **修复效果**
 
-CP1252 损坏产生的 `????` 内容现可被正确识别为乱码，"原始内容"列显示橙色"乱码"徽章，鼠标悬停提示"此记录内容疑似因编码问题损坏（历史遗留），新版本新增的记忆不受影响"，乱码文本以灰色斜体渲染。
+CP1252 损坏产生的 `????` 内容现可被正确识别为乱码，"原始内容"列显示橙色"乱码"徽章，鼠标悬停提示"此记录内容疑似因编码问题损坏（历史遗留），新版本新增的记忆不受影响"，乱码文本以灰色斜体渲染。F12 Network 面板中的后台响应也将直接显示中文字符。
 
 ---
 
@@ -75,25 +85,7 @@ v1.2.4 的修复（对 12 个第三方库单独设置 WARNING 级别）未能覆
 
 ---
 
-### 3. 存储操作日志在 F12 中显示 Unicode 转义序列（Issue #47）
-
-**问题描述**
-
-在浏览器 F12 开发者工具的 Network 面板中查看"存储操作日志"的后台响应，中文内容显示为 `\u4e2d\u6587` 形式的 Unicode 转义序列，而"查询操作日志"中可正常显示中文。
-
-**根因分析**
-
-FastAPI 默认使用 Python 标准库 `json` 模块序列化响应，其 `ensure_ascii=True` 默认值会将所有非 ASCII 字符（包括中文）转换为 `\uXXXX` 形式的转义序列。虽然浏览器能正确解析为中文并在 UI 中显示，但在 F12 原始响应视图中显示为转义序列，造成"乱码"的感知。
-
-**修复方案**
-
-1. `backend/requirements.txt` 和 `backend/pyproject.toml`：添加 `orjson>=3.9` 依赖（Rust 实现的高性能 JSON 库，FastAPI 官方推荐）。
-
-2. `backend/src/air_memory/main.py`：在 FastAPI 实例化时设置 `default_response_class=ORJSONResponse`。`orjson` 默认 `ensure_ascii=False`，所有 API 响应将直接输出真实 UTF-8 中文字符。
-
----
-
-### 4. UI 时间字段显示 UTC 而非本地时间（Issue #45）
+### 3. UI 时间字段显示 UTC 而非本地时间（Issue #45）
 
 **问题描述**
 
