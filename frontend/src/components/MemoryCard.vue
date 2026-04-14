@@ -24,7 +24,7 @@
     <div class="memory-card__content">{{ memory.content }}</div>
     <div class="memory-card__footer">
       <span class="memory-card__meta">ID: {{ memory.id }}</span>
-      <span class="memory-card__meta">创建时间: {{ memory.created_at }}</span>
+      <span class="memory-card__meta">创建时间: {{ formatLocalTime(memory.created_at) }}</span>
     </div>
   </el-card>
 </template>
@@ -32,6 +32,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Delete } from '@element-plus/icons-vue'
+import { formatLocalTime } from '../utils/time'
 import type { Memory } from '../api/types'
 
 const props = defineProps<{ memory: Memory }>()
