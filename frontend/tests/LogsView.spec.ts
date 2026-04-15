@@ -109,7 +109,7 @@ describe('LogsView 视图', () => {
         {
           id: 1,
           query: '空结果测试',
-          results: '' as unknown as string,
+          results: '',
           fast_only: false,
           created_at: '2026-04-21T11:00:00Z',
         },
