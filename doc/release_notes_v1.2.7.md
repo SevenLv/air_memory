@@ -94,11 +94,3 @@ start.bat
 ```
 
 升级不影响已有数据，`data/` 目录完整保留。
-
-### 数据影响分析
-
-- 本次记忆管理 UI 需求实现未修改 SQLite 表结构（`save_logs`、`memory_values`、`feedback_logs`、`query_logs` 均保持不变）；
-- 新增接口 `GET /api/v1/logs/save/{memory_id}` 仅为读取能力增强，不写入新字段；
-- 前端筛选与分页逻辑不改变本地持久化数据格式。
-
-结论：**本次升级无需执行数据库迁移或数据转换**。保留既有 `data/` 目录即可直接升级运行。
