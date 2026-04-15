@@ -1,6 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 import MemoriesView from '../views/MemoriesView.vue'
+import MemoryDetailView from '../views/MemoryDetailView.vue'
 import LogsView from '../views/LogsView.vue'
 import FeedbackView from '../views/FeedbackView.vue'
 
@@ -16,6 +17,11 @@ const router = createRouter({
       path: '/memories',
       name: 'memories',
       component: MemoriesView,
+    },
+    {
+      path: '/memories/:memoryId',
+      name: 'memory-detail',
+      component: MemoryDetailView,
     },
     {
       path: '/logs',

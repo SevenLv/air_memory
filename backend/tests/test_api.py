@@ -392,6 +392,27 @@ class TestGetSaveLogsAPI:
         assert "is_garbled" in logs[0], "API 响应应包含 is_garbled 字段"
         assert logs[0]["is_garbled"] is False, "正常中文内容的 is_garbled 应为 False"
 
+    @pytest.mark.asyncio
+    async def test_get_save_log_by_memory_id_success(self, client):
+        """按 memory_id 查询最新存储日志应返回 200。"""
+        content = "按 ID 查询存储日志"
+        save_resp = await client.post("/api/v1/memories", json={"content": content})
+        memory_id = save_resp.json()["memory_id"]
+        await asyncio.sleep(0.1)
+
+        resp = await client.get(f"/api/v1/logs/save/{memory_id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["memory_id"] == memory_id
+        assert data["content"] == content
+        assert "is_garbled" in data
+
+    @pytest.mark.asyncio
+    async def test_get_save_log_by_memory_id_not_found(self, client):
+        """按不存在的 memory_id 查询存储日志应返回 404。"""
+        resp = await client.get("/api/v1/logs/save/nonexistent-id")
+        assert resp.status_code == 404
+
 
 # ---------------------------------------------------------------------------
 # GET /api/v1/logs/query 查询日志

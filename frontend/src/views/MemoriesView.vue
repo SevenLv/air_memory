@@ -2,101 +2,177 @@
   <div class="memories-view">
     <el-card class="search-card">
       <template #header>
-        <span class="card-title">记忆查询</span>
+        <span class="card-title">记忆管理</span>
       </template>
       <el-form :model="form" inline @submit.prevent="handleSearch">
-        <el-form-item label="查询文本">
+        <el-form-item label="记忆 ID">
           <el-input
-            v-model="form.query"
-            placeholder="请输入查询内容"
+            v-model="form.memoryId"
+            placeholder="输入记忆 ID（可选）"
             clearable
-            style="width: 320px"
+            style="width: 300px"
           />
         </el-form-item>
-        <el-form-item label="返回条数">
-          <el-input-number v-model="form.topK" :min="1" :max="100" />
-        </el-form-item>
-        <el-form-item label="查询模式">
-          <el-switch
-            v-model="form.fastOnly"
-            active-text="快速模式"
-            inactive-text="深度模式"
-            active-color="#67c23a"
-            inactive-color="#409eff"
+        <el-form-item label="时间范围">
+          <el-date-picker
+            v-model="form.dateRange"
+            type="datetimerange"
+            range-separator="至"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
+            format="YYYY-MM-DD HH:mm:ss"
+            value-format="YYYY-MM-DDTHH:mm:ss"
+            style="width: 380px"
           />
         </el-form-item>
         <el-form-item>
           <el-button
             type="primary"
-            :loading="memoryStore.loading"
+            :loading="loading"
             native-type="submit"
             :icon="Search"
           >
             查询
           </el-button>
+          <el-button :icon="Refresh" @click="handleReset">重置</el-button>
         </el-form-item>
       </el-form>
-      <div v-if="hasSearched" class="search-meta">
+      <div class="search-meta">
         <el-tag size="small" type="success">
-          共找到 {{ memoryStore.count }} 条记忆
-        </el-tag>
-        <el-tag size="small" :type="memoryStore.queryMode === 'fast' ? 'warning' : 'primary'">
-          {{ memoryStore.queryMode === 'fast' ? '快速模式（仅热层）' : '深度模式（热层 + 冷层）' }}
+          共 {{ filteredLogs.length }} 条记忆
         </el-tag>
       </div>
     </el-card>
 
-    <div v-if="memoryStore.loading" class="loading-tip">
+    <div v-if="loading" class="loading-tip">
       <el-skeleton :rows="3" animated />
     </div>
 
-    <div v-else-if="hasSearched && memoryStore.memories.length === 0" class="empty-tip">
+    <div v-else-if="filteredLogs.length === 0" class="empty-tip">
       <el-empty description="未找到相关记忆" />
     </div>
 
     <div v-else class="memory-list">
-      <MemoryCard
-        v-for="memory in memoryStore.memories"
-        :key="memory.id"
-        :memory="memory"
-        @delete="handleDelete"
-      />
+      <el-table :data="pagedLogs" @row-click="handleRowClick">
+        <el-table-column prop="memory_id" label="记忆 ID" min-width="280" show-overflow-tooltip />
+        <el-table-column label="原始数据" min-width="320" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.content }}
+          </template>
+        </el-table-column>
+        <el-table-column label="提交时间" width="200">
+          <template #default="{ row }">
+            {{ formatLocalTime(row.created_at) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="120" align="center">
+          <template #default="{ row }">
+            <el-button type="primary" link @click.stop="handleRowClick(row)">查看详情</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <div class="pagination-wrapper">
+        <el-pagination
+          v-model:current-page="currentPage"
+          :page-size="pageSize"
+          :total="filteredLogs.length"
+          layout="total, prev, pager, next"
+          @current-change="handlePageChange"
+        />
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
-import { useMemoryStore } from '../stores/memory'
-import MemoryCard from '../components/MemoryCard.vue'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { Search, Refresh } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
+import { getSaveLogs } from '../api'
+import type { SaveLog } from '../api/types'
+import { formatLocalTime } from '../utils/time'
 
-const memoryStore = useMemoryStore()
+const router = useRouter()
 
 const form = reactive({
-  query: '',
-  topK: 5,
-  fastOnly: false,
+  memoryId: '',
+  dateRange: null as [string, string] | null,
 })
 
-const hasSearched = ref(false)
+const loading = ref(false)
+const allLogs = ref<SaveLog[]>([])
+const currentPage = ref(1)
+const pageSize = 20
 
-/** 执行查询 */
-async function handleSearch(): Promise<void> {
-  if (!form.query.trim()) {
-    ElMessage.warning('请输入查询文本')
-    return
+const normalizedLogs = computed(() =>
+  allLogs.value.map((log) => ({
+    ...log,
+    createdAtTs: Date.parse(log.created_at),
+  })),
+)
+
+const filteredLogs = computed(() => {
+  const memoryId = form.memoryId.trim().toLowerCase()
+  const startTime = form.dateRange?.[0] ? new Date(form.dateRange[0]).getTime() : null
+  const endTime = form.dateRange?.[1] ? new Date(form.dateRange[1]).getTime() : null
+
+  return normalizedLogs.value.filter((log) => {
+    if (memoryId && !log.memory_id.toLowerCase().includes(memoryId)) {
+      return false
+    }
+    if (startTime !== null && log.createdAtTs < startTime) {
+      return false
+    }
+    if (endTime !== null && log.createdAtTs > endTime) {
+      return false
+    }
+    return true
+  })
+})
+
+const pagedLogs = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return filteredLogs.value.slice(start, start + pageSize)
+})
+
+async function fetchLogs(): Promise<void> {
+  loading.value = true
+  try {
+    const data = await getSaveLogs()
+    allLogs.value = data.logs
+  } catch {
+    allLogs.value = []
+  } finally {
+    loading.value = false
   }
-  hasSearched.value = true
-  await memoryStore.fetchMemories(form.query.trim(), form.topK, form.fastOnly)
 }
 
-/** 删除记忆 */
-async function handleDelete(memoryId: string): Promise<void> {
-  await memoryStore.removeMemory(memoryId)
-  ElMessage.success('记忆已删除')
+function handleSearch(): void {
+  currentPage.value = 1
 }
+
+function handleReset(): void {
+  form.memoryId = ''
+  form.dateRange = null
+  currentPage.value = 1
+}
+
+function handlePageChange(page: number): void {
+  currentPage.value = page
+}
+
+function handleRowClick(row: SaveLog): void {
+  const memoryState = { ...row }
+  router.push({
+    path: `/memories/${encodeURIComponent(row.memory_id)}`,
+    state: { memory: memoryState },
+  })
+}
+
+onMounted(() => {
+  fetchLogs()
+})
 </script>
 
 <style scoped>
@@ -129,5 +205,11 @@ async function handleDelete(memoryId: string): Promise<void> {
 
 .memory-list {
   margin-top: 4px;
+}
+
+.pagination-wrapper {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>
