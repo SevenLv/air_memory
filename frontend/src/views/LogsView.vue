@@ -4,17 +4,43 @@
       <!-- 存储操作日志 -->
       <el-tab-pane label="存储操作日志" name="save">
         <div class="tab-toolbar">
-          <el-button
-            type="primary"
-            :icon="Refresh"
-            :loading="logStore.saveLoading"
-            @click="logStore.fetchSaveLogs()"
-          >
-            刷新
-          </el-button>
-          <el-tag type="info">共 {{ logStore.saveLogs.length }} 条</el-tag>
+          <el-form inline @submit.prevent="handleSaveSearch">
+            <el-form-item label="时间范围">
+              <el-date-picker
+                v-model="saveForm.dateRange"
+                type="datetimerange"
+                range-separator="至"
+                start-placeholder="开始时间"
+                end-placeholder="结束时间"
+                format="YYYY-MM-DD HH:mm:ss"
+                value-format="YYYY-MM-DDTHH:mm:ss"
+                style="width: 380px"
+              />
+            </el-form-item>
+            <el-form-item>
+              <el-button
+                type="primary"
+                :loading="logStore.saveLoading"
+                :icon="Search"
+                native-type="submit"
+              >
+                查询
+              </el-button>
+              <el-button :icon="Refresh" @click="handleSaveReset">重置</el-button>
+              <el-button
+                type="primary"
+                plain
+                :icon="Refresh"
+                :loading="logStore.saveLoading"
+                @click="logStore.fetchSaveLogs()"
+              >
+                刷新
+              </el-button>
+            </el-form-item>
+          </el-form>
+          <el-tag type="info">共 {{ filteredSaveLogs.length }} 条</el-tag>
         </div>
-        <LogTable :data="logStore.saveLogs" :loading="logStore.saveLoading">
+        <LogTable :data="pagedSaveLogs" :loading="logStore.saveLoading">
           <el-table-column prop="id" label="ID" width="70" align="center" />
           <el-table-column label="时间" width="200">
             <template #default="{ row }">
@@ -44,22 +70,59 @@
             </template>
           </el-table-column>
         </LogTable>
+        <div v-if="filteredSaveLogs.length > 0" class="pagination-wrapper">
+          <el-pagination
+            v-model:current-page="saveCurrentPage"
+            v-model:page-size="savePageSize"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="filteredSaveLogs.length"
+            layout="total, sizes, prev, pager, next"
+            @size-change="handleSavePageSizeChange"
+            @current-change="handleSavePageChange"
+          />
+        </div>
       </el-tab-pane>
 
       <!-- 查询操作日志 -->
       <el-tab-pane label="查询操作日志" name="query">
         <div class="tab-toolbar">
-          <el-button
-            type="primary"
-            :icon="Refresh"
-            :loading="logStore.queryLoading"
-            @click="logStore.fetchQueryLogs()"
-          >
-            刷新
-          </el-button>
-          <el-tag type="info">共 {{ logStore.queryLogs.length }} 条</el-tag>
+          <el-form inline @submit.prevent="handleQuerySearch">
+            <el-form-item label="时间范围">
+              <el-date-picker
+                v-model="queryForm.dateRange"
+                type="datetimerange"
+                range-separator="至"
+                start-placeholder="开始时间"
+                end-placeholder="结束时间"
+                format="YYYY-MM-DD HH:mm:ss"
+                value-format="YYYY-MM-DDTHH:mm:ss"
+                style="width: 380px"
+              />
+            </el-form-item>
+            <el-form-item>
+              <el-button
+                type="primary"
+                :loading="logStore.queryLoading"
+                :icon="Search"
+                native-type="submit"
+              >
+                查询
+              </el-button>
+              <el-button :icon="Refresh" @click="handleQueryReset">重置</el-button>
+              <el-button
+                type="primary"
+                plain
+                :icon="Refresh"
+                :loading="logStore.queryLoading"
+                @click="logStore.fetchQueryLogs()"
+              >
+                刷新
+              </el-button>
+            </el-form-item>
+          </el-form>
+          <el-tag type="info">共 {{ filteredQueryLogs.length }} 条</el-tag>
         </div>
-        <LogTable :data="logStore.queryLogs" :loading="logStore.queryLoading">
+        <LogTable :data="pagedQueryLogs" :loading="logStore.queryLoading">
           <el-table-column prop="id" label="ID" width="70" align="center" />
           <el-table-column label="时间" width="200">
             <template #default="{ row }">
@@ -80,14 +143,25 @@
             </template>
           </el-table-column>
         </LogTable>
+        <div v-if="filteredQueryLogs.length > 0" class="pagination-wrapper">
+          <el-pagination
+            v-model:current-page="queryCurrentPage"
+            v-model:page-size="queryPageSize"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="filteredQueryLogs.length"
+            layout="total, sizes, prev, pager, next"
+            @size-change="handleQueryPageSizeChange"
+            @current-change="handleQueryPageChange"
+          />
+        </div>
       </el-tab-pane>
     </el-tabs>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { Refresh } from '@element-plus/icons-vue'
+import { computed, reactive, ref, onMounted } from 'vue'
+import { Search, Refresh } from '@element-plus/icons-vue'
 import { useLogStore } from '../stores/log'
 import { formatLocalTime } from '../utils/time'
 import LogTable from '../components/LogTable.vue'
@@ -95,9 +169,55 @@ import type { SaveLog } from '../api/types'
 
 const logStore = useLogStore()
 const activeTab = ref('save')
+const saveForm = reactive({
+  dateRange: null as [string, string] | null,
+})
+const queryForm = reactive({
+  dateRange: null as [string, string] | null,
+})
+const saveCurrentPage = ref(1)
+const queryCurrentPage = ref(1)
+const savePageSize = ref(20)
+const queryPageSize = ref(20)
+
+function parseTimestamp(value: string): number {
+  const ts = Date.parse(value)
+  return Number.isNaN(ts) ? 0 : ts
+}
+
+function isInRange(createdAt: string, dateRange: [string, string] | null): boolean {
+  if (!dateRange) {
+    return true
+  }
+  const createdAtTs = parseTimestamp(createdAt)
+  const startTs = parseTimestamp(dateRange[0])
+  const endTs = parseTimestamp(dateRange[1])
+  return createdAtTs >= startTs && createdAtTs <= endTs
+}
+
+const filteredSaveLogs = computed(() =>
+  logStore.saveLogs.filter((log) => isInRange(log.created_at, saveForm.dateRange)),
+)
+
+const filteredQueryLogs = computed(() =>
+  logStore.queryLogs.filter((log) => isInRange(log.created_at, queryForm.dateRange)),
+)
+
+const pagedSaveLogs = computed(() => {
+  const start = (saveCurrentPage.value - 1) * savePageSize.value
+  return filteredSaveLogs.value.slice(start, start + savePageSize.value)
+})
+
+const pagedQueryLogs = computed(() => {
+  const start = (queryCurrentPage.value - 1) * queryPageSize.value
+  return filteredQueryLogs.value.slice(start, start + queryPageSize.value)
+})
 
 /** 解析查询结果摘要：results 字段存储 JSON 字符串，展示结果数量 */
-function parseResultsSummary(results: string): string {
+function parseResultsSummary(results: unknown): string {
+  if (typeof results !== 'string' || results.length === 0) {
+    return '--'
+  }
   try {
     const parsed = JSON.parse(results) as unknown[]
     return `${parsed.length} 条结果`
@@ -136,6 +256,42 @@ function handleTabChange(tab: string): void {
   }
 }
 
+function handleSaveSearch(): void {
+  saveCurrentPage.value = 1
+}
+
+function handleSaveReset(): void {
+  saveForm.dateRange = null
+  saveCurrentPage.value = 1
+}
+
+function handleSavePageChange(page: number): void {
+  saveCurrentPage.value = page
+}
+
+function handleSavePageSizeChange(pageSize: number): void {
+  savePageSize.value = pageSize
+  saveCurrentPage.value = 1
+}
+
+function handleQuerySearch(): void {
+  queryCurrentPage.value = 1
+}
+
+function handleQueryReset(): void {
+  queryForm.dateRange = null
+  queryCurrentPage.value = 1
+}
+
+function handleQueryPageChange(page: number): void {
+  queryCurrentPage.value = page
+}
+
+function handleQueryPageSizeChange(pageSize: number): void {
+  queryPageSize.value = pageSize
+  queryCurrentPage.value = 1
+}
+
 onMounted(() => {
   logStore.fetchSaveLogs()
 })
@@ -149,6 +305,7 @@ onMounted(() => {
 .tab-toolbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -160,5 +317,11 @@ onMounted(() => {
 .garbled-text {
   color: #909399;
   font-style: italic;
+}
+
+.pagination-wrapper {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

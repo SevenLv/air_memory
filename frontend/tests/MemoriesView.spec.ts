@@ -14,13 +14,18 @@ vi.mock('../src/api', () => ({
   getSaveLogs: vi.fn().mockResolvedValue({
     logs: Array.from({ length: 25 }).map((_, idx) => {
       const n = 25 - idx
+      const scoreMap: Record<number, number> = {
+        25: 0.85,
+        23: 0.55,
+        22: 0.25,
+      }
       return {
         id: n,
         memory_id: `mem-${String(n).padStart(3, '0')}`,
         content: `内容-${n}`,
         created_at: `2026-04-${String((n % 28) + 1).padStart(2, '0')}T10:00:00Z`,
         memory_deleted: n === 24,
-        value_score: Number((n / 100).toFixed(2)),
+        value_score: scoreMap[n] ?? Number((n / 100).toFixed(2)),
         is_garbled: false,
       }
     }),
@@ -102,5 +107,17 @@ describe('MemoriesView 视图', () => {
 
     expect(deleteMemory).toHaveBeenCalledWith('mem-025')
     expect(wrapper.text()).not.toContain('mem-025')
+  })
+
+  it('根据评价值为行设置背景色对应的样式类', async () => {
+    const wrapper = mount(MemoriesView, {
+      global: { plugins: [ElementPlus] },
+    })
+    await flushPromises()
+
+    const html = wrapper.html()
+    expect(html).toContain('memory-row-high')
+    expect(html).toContain('memory-row-medium')
+    expect(html).toContain('memory-row-low')
   })
 })

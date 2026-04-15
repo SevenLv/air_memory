@@ -53,7 +53,7 @@
     </div>
 
     <div v-else class="memory-list">
-        <el-table :data="pagedLogs" @row-click="handleRowClick">
+        <el-table :data="pagedLogs" :row-class-name="memoryRowClassName" @row-click="handleRowClick">
           <el-table-column prop="memory_id" label="记忆 ID" min-width="280" show-overflow-tooltip />
           <el-table-column label="原始数据" min-width="320" show-overflow-tooltip>
             <template #default="{ row }">
@@ -184,6 +184,20 @@ function formatValueScore(valueScore: number | null | undefined): string {
   return typeof valueScore === 'number' ? valueScore.toFixed(2) : '--'
 }
 
+function memoryRowClassName({ row }: { row: SaveLog }): string {
+  const valueScore = row.value_score
+  if (typeof valueScore !== 'number') {
+    return ''
+  }
+  if (valueScore >= 0.7) {
+    return 'memory-row-high'
+  }
+  if (valueScore >= 0.4) {
+    return 'memory-row-medium'
+  }
+  return 'memory-row-low'
+}
+
 async function handleDelete(row: SaveLog): Promise<void> {
   try {
     await ElMessageBox.confirm('确定删除该记忆吗', '删除确认', {
@@ -246,5 +260,29 @@ onMounted(() => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+:deep(.el-table__body tr.memory-row-high > td.el-table__cell) {
+  background-color: #f0f9eb;
+}
+
+:deep(.el-table__body tr.memory-row-high:hover > td.el-table__cell) {
+  background-color: #d7efc1 !important;
+}
+
+:deep(.el-table__body tr.memory-row-medium > td.el-table__cell) {
+  background-color: #fdf6ec;
+}
+
+:deep(.el-table__body tr.memory-row-medium:hover > td.el-table__cell) {
+  background-color: #fae7cc !important;
+}
+
+:deep(.el-table__body tr.memory-row-low > td.el-table__cell) {
+  background-color: #fef0f0;
+}
+
+:deep(.el-table__body tr.memory-row-low:hover > td.el-table__cell) {
+  background-color: #fbd8d8 !important;
 }
 </style>
