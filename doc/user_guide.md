@@ -9,6 +9,7 @@
 | 1.2 | 2026-4-14 | 2.4 节补充存储日志乱码徽章说明；重写 2.5 节反馈记录列表（新增时间段查询和分页）；3.2.3 节补充 GET /api/v1/logs/feedback 接口说明 |
 | 1.3 | 2026-4-14 | 2.4 节修正乱码徽章说明，补充 v1.2.5 修复信息 |
 | 1.4 | 2026-4-15 | 2.4 节补充 v1.2.6 根因修复说明 |
+| 1.5 | 2026-4-15 | 3.2 节补充 REST API 编码约束，明确 JSON 请求必须显式指定 `charset=UTF-8` |
 
 ---
 
@@ -291,8 +292,12 @@ AIR_Memory MCP Server 暴露以下三个工具：
 | 项目 | 说明 |
 | --- | --- |
 | 基础 URL | `http://localhost:8080/api/v1` |
-| 数据格式 | JSON（`Content-Type: application/json`） |
+| 数据格式 | JSON（`Content-Type: application/json; charset=UTF-8`） |
 | API 文档 | `http://localhost:8080/api/v1/docs`（Swagger UI） |
+
+> 重要约束: 对所有包含 JSON 请求体的 REST API 调用, 必须显式设置
+> `Content-Type: application/json; charset=UTF-8`。不建议省略 `charset`,
+> 否则在部分客户端环境中可能出现中文内容乱码。
 
 **通用成功响应格式**：
 
@@ -341,7 +346,7 @@ curl 示例：
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/memories \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json; charset=UTF-8" \
   -d '{"content": "用户偏好使用深色主题，字体大小设置为 16px"}'
 ```
 
@@ -437,7 +442,7 @@ curl 示例：
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/memories/a1b2c3d4-e5f6-7890-abcd-ef1234567890/feedback \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json; charset=UTF-8" \
   -d '{"valuable": true}'
 ```
 

@@ -61,6 +61,22 @@ def test_health_check_with_static_dir_mounted(tmp_path) -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_openapi_docs_include_charset_requirement() -> None:
+    """在线 API 文档应明确要求 JSON 请求显式声明 UTF-8 charset。"""
+    response = client.get("/api/v1/openapi.json")
+    assert response.status_code == 200
+
+    schema = response.json()
+    required_header = "Content-Type: application/json; charset=UTF-8"
+
+    assert required_header in schema["info"]["description"]
+    assert required_header in schema["paths"]["/api/v1/memories"]["post"]["description"]
+    assert (
+        required_header
+        in schema["paths"]["/api/v1/memories/{memory_id}/feedback"]["post"]["description"]
+    )
+
+
 # ---------------------------------------------------------------------------
 # 静态文件服务逻辑测试
 # ---------------------------------------------------------------------------
