@@ -22,7 +22,7 @@ if /i "%1"=="/uninstall" goto :uninstall_task
 
 REM ---------- 正常启动 ----------
 echo ==========================================
-echo  AIR_Memory 一键启动 v1.2.6
+echo  AIR_Memory 一键启动 v1.2.7
 echo ==========================================
 
 REM 检查 Python 3.11+
