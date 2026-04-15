@@ -1,7 +1,7 @@
 ﻿# AIR Memory
 Memory System for AI Agent
 
-**当前版本**: v1.2.5
+**当前版本**: v1.2.6
 
 ## 重要说明
 
@@ -14,6 +14,10 @@ Memory System for AI Agent
 ---
 
 ## 快速开始
+
+### 获取发布包
+
+前往 [GitHub Releases 页面](https://github.com/SevenLv/air_memory/releases/latest)，下载最新版本的发布包并解压。
 
 ### 环境前提
 
@@ -78,7 +82,7 @@ graph LR
     DOC --> D5["srd_v1.1.md（系统需求定义）"]
     DOC --> D6["deploy_guide.md（部署手册）"]
     DOC --> D7["user_guide.md（用户手册）"]
-    DOC --> D8["release_notes_v1.2.4.md（发布说明）"]
+    DOC --> D8["release_notes_v1.2.6.md（发布说明）"]
 ```
 
 ### 目录说明

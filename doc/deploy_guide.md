@@ -7,12 +7,15 @@
 | 1.0 | 2026-4-10 | 初稿，覆盖 macOS 和 Windows 完整部署步骤（基于 Docker） |
 | 1.1 | 2026-4-10 | 重写：放弃 Docker，改为 Python 本机直接运行；FastAPI 统一承载 API 和前端静态文件；更新部署步骤、环境前提、自启动说明和常见问题排查 |
 | 1.2 | 2026-4-14 | 更新 Windows 启动成功 Banner 示例，补充"后端 API 文档"行 |
+| 1.3 | 2026-4-14 | 更新获取方式：改为从 GitHub Releases 下载发布包，不再需要通过 Git 克隆源代码；新增版本升级说明 |
 
 ---
 
 ## 1. 概述
 
 本手册面向部署人员，提供在 macOS 和 Windows 操作系统上完成 AIR_Memory 系统部署的完整步骤说明。AIR_Memory 采用 Python 本机直接运行方案，用户仅需安装 **Python 3.11+** 即可完成部署，无需 Docker 或其他容器运行时。
+
+> **获取方式**：请从 [GitHub Releases 页面](https://github.com/SevenLv/air_memory/releases/latest)下载最新发布包（可执行程序），无需通过 Git 克隆源代码。
 
 系统架构概览：
 
@@ -85,14 +88,22 @@ REM 应输出 Python 3.11.x 或更高版本
 
 ## 3. 部署步骤
 
-### 3.1 获取项目代码
+### 3.1 下载发布包
 
-通过 Git 克隆项目仓库到本地：
+前往 [GitHub Releases 页面](https://github.com/SevenLv/air_memory/releases/latest)，下载最新版本的发布包（例如 `air_memory-v1.2.6.zip`）。
+
+**macOS / Linux**：
 
 ```bash
-git clone <仓库地址>
-cd air_memory
+unzip air_memory-v1.2.6.zip
+cd air_memory-v1.2.6
 ```
+
+**Windows**：
+
+右键单击下载的 `.zip` 文件，选择"全部解压缩"，完成后进入解压后的目录。
+
+> **说明**：发布包为完整的可执行程序，已包含预构建的前端静态文件，无需安装 Node.js 或执行前端构建步骤。
 
 ### 3.2 macOS 部署步骤
 
@@ -398,3 +409,29 @@ start.bat
 export HOT_MEMORY_BUDGET_MB=2048
 bash start.sh
 ```
+
+---
+
+## 9. 版本升级
+
+### 9.1 升级步骤
+
+1. 前往 [GitHub Releases 页面](https://github.com/SevenLv/air_memory/releases/latest)，下载新版本发布包。
+2. 停止当前运行的服务：
+   - macOS/Linux：按 `Ctrl+C`，或执行 `bash start.sh --uninstall`（已安装自启动时）
+   - Windows：关闭命令行窗口，或执行 `start.bat /uninstall`（已安装自启动时）
+3. 将新版本发布包解压到**新目录**（不要覆盖旧目录）。
+4. 将旧版本的 `data/` 目录完整复制到新版本目录下，以保留历史数据。
+5. 在新版本目录下执行启动脚本：
+   - macOS/Linux：`bash start.sh`
+   - Windows：`start.bat`
+
+### 9.2 数据保留说明
+
+升级时只需保留 `data/` 目录，其他目录和文件均可由新版本发布包提供。
+
+| 目录 | 是否需要保留 | 说明 |
+| --- | --- | --- |
+| `data/` | **是** | 包含所有记忆数据和日志，必须保留 |
+| `models/` | 可选 | Embedding 模型缓存，保留可避免重新下载 |
+| `.venv/` | 否 | 新版本将自动重建 |

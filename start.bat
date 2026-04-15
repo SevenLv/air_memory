@@ -69,7 +69,6 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-pip install --quiet --no-deps -e backend\
 
 REM 准备数据目录
 echo [3/4] 准备数据目录...
