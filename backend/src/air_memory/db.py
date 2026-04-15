@@ -37,6 +37,9 @@ CREATE TABLE IF NOT EXISTS feedback_logs (
     valuable   INTEGER NOT NULL,
     created_at TEXT    NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_save_logs_memory_id ON save_logs (memory_id);
+CREATE INDEX IF NOT EXISTS idx_save_logs_created_at ON save_logs (created_at);
 """
 
 

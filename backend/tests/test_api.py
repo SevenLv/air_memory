@@ -394,6 +394,98 @@ class TestGetSaveLogsAPI:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/v1/memories/manage/list 记忆管理列表
+# ---------------------------------------------------------------------------
+
+class TestMemoryManageListAPI:
+    """测试 GET /api/v1/memories/manage/list 接口。"""
+
+    @pytest.mark.asyncio
+    async def test_get_memory_manage_list_default_pagination(self, client):
+        """默认查询应返回按最近时间排序的分页数据。"""
+        await client.post("/api/v1/memories", json={"content": "管理列表测试一"})
+        await asyncio.sleep(0.1)
+        resp = await client.get("/api/v1/memories/manage/list")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "logs" in data
+        assert "count" in data
+        assert "total" in data
+        assert data["total"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_get_memory_manage_list_filter_by_memory_id(self, client):
+        """支持按 memory_id 过滤。"""
+        r1 = await client.post("/api/v1/memories", json={"content": "过滤测试一"})
+        r2 = await client.post("/api/v1/memories", json={"content": "过滤测试二"})
+        await asyncio.sleep(0.1)
+        memory_id = r1.json()["memory_id"]
+        other_id = r2.json()["memory_id"]
+
+        resp = await client.get(
+            "/api/v1/memories/manage/list",
+            params={"memory_id": memory_id},
+        )
+        assert resp.status_code == 200
+        logs = resp.json()["logs"]
+        assert len(logs) >= 1
+        assert all(item["memory_id"] == memory_id for item in logs)
+        assert all(item["memory_id"] != other_id for item in logs)
+
+    @pytest.mark.asyncio
+    async def test_get_memory_manage_list_filter_by_time_range(self, client):
+        """支持按时间范围过滤。"""
+        await client.post("/api/v1/memories", json={"content": "时间过滤测试"})
+        await asyncio.sleep(0.1)
+        resp = await client.get(
+            "/api/v1/memories/manage/list",
+            params={
+                "start_time": "2100-01-01T00:00:00Z",
+                "end_time": "2100-01-02T00:00:00Z",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 0
+
+    @pytest.mark.asyncio
+    async def test_get_memory_manage_list_page_size_too_large(self, client):
+        """page_size > 100 应返回 422。"""
+        resp = await client.get(
+            "/api/v1/memories/manage/list",
+            params={"page_size": 999},
+        )
+        assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/memories/{memory_id}/detail 记忆详情
+# ---------------------------------------------------------------------------
+
+class TestMemoryDetailAPI:
+    """测试 GET /api/v1/memories/{memory_id}/detail 接口。"""
+
+    @pytest.mark.asyncio
+    async def test_get_memory_detail_success(self, client):
+        """存在的记忆应返回详情字段。"""
+        save_resp = await client.post("/api/v1/memories", json={"content": "详情查询内容"})
+        memory_id = save_resp.json()["memory_id"]
+        await asyncio.sleep(0.1)
+        detail_resp = await client.get(f"/api/v1/memories/{memory_id}/detail")
+        assert detail_resp.status_code == 200
+        data = detail_resp.json()
+        assert data["memory_id"] == memory_id
+        assert data["content"] == "详情查询内容"
+        assert "created_at" in data
+        assert "value_score" in data
+
+    @pytest.mark.asyncio
+    async def test_get_memory_detail_not_found(self, client):
+        """不存在记忆应返回 404。"""
+        resp = await client.get("/api/v1/memories/nonexistent-id/detail")
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # GET /api/v1/logs/query 查询日志
 # ---------------------------------------------------------------------------
 

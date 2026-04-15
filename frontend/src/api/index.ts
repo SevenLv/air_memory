@@ -10,6 +10,8 @@ import type {
   DiskStats,
   AppVersion,
   FeedbackLogsWithTotalResponse,
+  MemoryDetail,
+  MemoryManageListResponse,
 } from './types'
 
 /** 统一 Axios 实例 */
@@ -121,5 +123,31 @@ export async function getAllFeedbackLogs(params: {
       page_size: params.pageSize,
     },
   })
+  return res.data
+}
+
+/** 获取记忆管理列表（默认最近优先） */
+export async function getMemoryManageList(params: {
+  memoryId?: string
+  startTime?: string
+  endTime?: string
+  page?: number
+  pageSize?: number
+}): Promise<MemoryManageListResponse> {
+  const res = await apiClient.get<MemoryManageListResponse>('/memories/manage/list', {
+    params: {
+      memory_id: params.memoryId || undefined,
+      start_time: params.startTime || undefined,
+      end_time: params.endTime || undefined,
+      page: params.page,
+      page_size: params.pageSize,
+    },
+  })
+  return res.data
+}
+
+/** 获取记忆详情 */
+export async function getMemoryDetail(memoryId: string): Promise<MemoryDetail> {
+  const res = await apiClient.get<MemoryDetail>(`/memories/${memoryId}/detail`)
   return res.data
 }

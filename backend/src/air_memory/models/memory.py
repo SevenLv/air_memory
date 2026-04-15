@@ -60,6 +60,42 @@ class MemoryValueScore(BaseModel):
     feedback_count: int
 
 
+class MemoryManageItem(BaseModel):
+    """记忆管理列表条目。"""
+
+    id: int
+    memory_id: str
+    content: str
+    created_at: str
+    memory_deleted: bool
+    is_garbled: bool = False
+    value_score: float
+
+
+class MemoryManageListResponse(BaseModel):
+    """记忆管理列表响应（含总条数，用于分页）。"""
+
+    logs: list[MemoryManageItem]
+    count: int
+    total: int
+
+
+class MemoryDetailResponse(BaseModel):
+    """记忆详情响应。"""
+
+    id: int
+    memory_id: str
+    content: str
+    created_at: str
+    memory_deleted: bool
+    is_garbled: bool = False
+    value_score: float
+    tier: str
+    feedback_count: int
+    value_updated_at: str
+    message: str = "ok"
+
+
 class DeleteMemoryResponse(BaseModel):
     """删除记忆响应。"""
 

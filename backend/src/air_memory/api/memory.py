@@ -7,8 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from air_memory.models.feedback import FeedbackLog, FeedbackLogsResponse
 from air_memory.models.memory import (
     DeleteMemoryResponse,
+    MemoryDetailResponse,
     MemoryFeedbackRequest,
     MemoryFeedbackResponse,
+    MemoryManageListResponse,
     MemoryQueryResponse,
     MemorySaveRequest,
     MemorySaveResponse,
@@ -171,3 +173,37 @@ async def get_value_score(
     if data is None:
         raise HTTPException(status_code=404, detail=f"记忆不存在：{memory_id}")
     return MemoryValueScore(**data)
+
+
+@router.get("/manage/list", response_model=MemoryManageListResponse)
+async def get_memory_manage_list(
+    request: Request,
+    page: int = Query(default=1, ge=1, description="页码"),
+    page_size: int = Query(default=20, ge=1, le=100, description="每页条数"),
+    memory_id: str | None = Query(default=None, description="记忆 ID 过滤"),
+    start_time: str | None = Query(default=None, description="开始时间（ISO 8601）"),
+    end_time: str | None = Query(default=None, description="结束时间（ISO 8601）"),
+):
+    """查询记忆管理列表（默认最近优先，支持分页和筛选）。"""
+    log_svc = _get_log_service(request)
+    logs, total = await log_svc.get_memory_manage_logs(
+        page=page,
+        page_size=page_size,
+        memory_id=memory_id,
+        start_time=start_time,
+        end_time=end_time,
+    )
+    return MemoryManageListResponse(logs=logs, count=len(logs), total=total)
+
+
+@router.get("/{memory_id}/detail", response_model=MemoryDetailResponse)
+async def get_memory_detail(
+    memory_id: str,
+    request: Request,
+):
+    """查询指定记忆详情。"""
+    log_svc = _get_log_service(request)
+    detail = await log_svc.get_memory_detail(memory_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail=f"记忆不存在：{memory_id}")
+    return detail

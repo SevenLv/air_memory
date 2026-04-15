@@ -7,6 +7,7 @@ import aiosqlite
 
 from air_memory.config import settings
 from air_memory.models.log import QueryLog, SaveLog
+from air_memory.models.memory import MemoryDetailResponse, MemoryManageItem
 
 
 def _now_iso() -> str:
@@ -110,3 +111,96 @@ class LogService:
             )
             for row in rows
         ]
+
+    async def get_memory_manage_logs(
+        self,
+        page: int = 1,
+        page_size: int = 20,
+        memory_id: str | None = None,
+        start_time: str | None = None,
+        end_time: str | None = None,
+    ) -> tuple[list[MemoryManageItem], int]:
+        """查询记忆管理列表（支持时间段、记忆 ID 过滤和分页）。"""
+        offset = (page - 1) * page_size
+        conditions = []
+        params = []
+        if memory_id:
+            conditions.append("sl.memory_id = ?")
+            params.append(memory_id)
+        if start_time:
+            conditions.append("sl.created_at >= ?")
+            params.append(start_time)
+        if end_time:
+            conditions.append("sl.created_at <= ?")
+            params.append(end_time)
+
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        async with aiosqlite.connect(settings.DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+
+            count_sql = f"SELECT COUNT(*) as total FROM save_logs sl {where_clause}"
+            async with db.execute(count_sql, params) as cursor:
+                row = await cursor.fetchone()
+            total = row["total"] if row else 0
+
+            data_sql = (
+                "SELECT sl.id, sl.memory_id, sl.content, sl.created_at, sl.memory_deleted, "
+                "COALESCE(mv.value_score, 0.0) AS value_score "
+                "FROM save_logs sl "
+                "LEFT JOIN memory_values mv ON mv.memory_id = sl.memory_id "
+                f"{where_clause} "
+                "ORDER BY sl.created_at DESC, sl.id DESC "
+                "LIMIT ? OFFSET ?"
+            )
+            data_params = params + [page_size, offset]
+            async with db.execute(data_sql, data_params) as cursor:
+                rows = await cursor.fetchall()
+
+        logs = [
+            MemoryManageItem(
+                id=row["id"],
+                memory_id=row["memory_id"],
+                content=row["content"],
+                created_at=row["created_at"],
+                memory_deleted=bool(row["memory_deleted"]),
+                is_garbled=_is_garbled(row["content"]),
+                value_score=float(row["value_score"]),
+            )
+            for row in rows
+        ]
+        return logs, total
+
+    async def get_memory_detail(self, memory_id: str) -> MemoryDetailResponse | None:
+        """查询指定记忆详情。"""
+        async with aiosqlite.connect(settings.DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT sl.id, sl.memory_id, sl.content, sl.created_at, sl.memory_deleted, "
+                "COALESCE(mv.value_score, 0.0) AS value_score, "
+                "COALESCE(mv.tier, 'unknown') AS tier, "
+                "COALESCE(mv.feedback_count, 0) AS feedback_count, "
+                "COALESCE(mv.updated_at, '') AS value_updated_at "
+                "FROM save_logs sl "
+                "LEFT JOIN memory_values mv ON mv.memory_id = sl.memory_id "
+                "WHERE sl.memory_id = ? "
+                "ORDER BY sl.id DESC LIMIT 1",
+                (memory_id,),
+            ) as cursor:
+                row = await cursor.fetchone()
+
+        if row is None:
+            return None
+
+        return MemoryDetailResponse(
+            id=row["id"],
+            memory_id=row["memory_id"],
+            content=row["content"],
+            created_at=row["created_at"],
+            memory_deleted=bool(row["memory_deleted"]),
+            is_garbled=_is_garbled(row["content"]),
+            value_score=float(row["value_score"]),
+            tier=row["tier"],
+            feedback_count=int(row["feedback_count"]),
+            value_updated_at=row["value_updated_at"],
+        )

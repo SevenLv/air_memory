@@ -95,3 +95,36 @@ export interface FeedbackLogsWithTotalResponse {
   count: number
   total: number
 }
+
+/** 记忆管理列表条目 */
+export interface MemoryManageItem {
+  id: number
+  memory_id: string
+  content: string
+  created_at: string
+  memory_deleted: boolean
+  is_garbled: boolean
+  value_score: number
+}
+
+/** 记忆管理列表响应 */
+export interface MemoryManageListResponse {
+  logs: MemoryManageItem[]
+  count: number
+  total: number
+}
+
+/** 记忆详情 */
+export interface MemoryDetail {
+  id: number
+  memory_id: string
+  content: string
+  created_at: string
+  memory_deleted: boolean
+  is_garbled: boolean
+  value_score: number
+  tier: string
+  feedback_count: number
+  value_updated_at: string
+  message: string
+}

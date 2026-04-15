@@ -1,102 +1,163 @@
 <template>
   <div class="memories-view">
-    <el-card class="search-card">
+    <el-card class="query-card">
       <template #header>
-        <span class="card-title">记忆查询</span>
+        <span class="card-title">记忆管理查询</span>
       </template>
       <el-form :model="form" inline @submit.prevent="handleSearch">
-        <el-form-item label="查询文本">
+        <el-form-item label="记忆 ID">
           <el-input
-            v-model="form.query"
-            placeholder="请输入查询内容"
+            v-model="form.memoryId"
+            placeholder="输入记忆 ID（可选）"
             clearable
-            style="width: 320px"
+            style="width: 300px"
           />
         </el-form-item>
-        <el-form-item label="返回条数">
-          <el-input-number v-model="form.topK" :min="1" :max="100" />
-        </el-form-item>
-        <el-form-item label="查询模式">
-          <el-switch
-            v-model="form.fastOnly"
-            active-text="快速模式"
-            inactive-text="深度模式"
-            active-color="#67c23a"
-            inactive-color="#409eff"
+        <el-form-item label="时间范围">
+          <el-date-picker
+            v-model="form.dateRange"
+            type="datetimerange"
+            range-separator="至"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
+            format="YYYY-MM-DD HH:mm:ss"
+            value-format="YYYY-MM-DDTHH:mm:ss"
+            style="width: 380px"
           />
         </el-form-item>
         <el-form-item>
-          <el-button
-            type="primary"
-            :loading="memoryStore.loading"
-            native-type="submit"
-            :icon="Search"
-          >
+          <el-button type="primary" :loading="loading" native-type="submit" :icon="Search">
             查询
           </el-button>
+          <el-button :icon="Refresh" @click="handleReset">重置</el-button>
         </el-form-item>
       </el-form>
-      <div v-if="hasSearched" class="search-meta">
-        <el-tag size="small" type="success">
-          共找到 {{ memoryStore.count }} 条记忆
-        </el-tag>
-        <el-tag size="small" :type="memoryStore.queryMode === 'fast' ? 'warning' : 'primary'">
-          {{ memoryStore.queryMode === 'fast' ? '快速模式（仅热层）' : '深度模式（热层 + 冷层）' }}
-        </el-tag>
-      </div>
     </el-card>
 
-    <div v-if="memoryStore.loading" class="loading-tip">
-      <el-skeleton :rows="3" animated />
-    </div>
+    <el-card class="list-card">
+      <template #header>
+        <div class="list-header">
+          <span class="card-title">最近记忆列表</span>
+          <el-tag type="info">共 {{ total }} 条</el-tag>
+        </div>
+      </template>
 
-    <div v-else-if="hasSearched && memoryStore.memories.length === 0" class="empty-tip">
-      <el-empty description="未找到相关记忆" />
-    </div>
+      <el-table
+        :data="items"
+        v-loading="loading"
+        border
+        stripe
+        style="width: 100%"
+        empty-text="暂无记忆数据"
+        @row-click="goDetail"
+      >
+        <el-table-column prop="id" label="日志 ID" width="90" align="center" />
+        <el-table-column label="提交时间" width="200">
+          <template #default="{ row }">
+            {{ formatLocalTime(row.created_at) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="memory_id" label="记忆 ID" min-width="220" show-overflow-tooltip />
+        <el-table-column label="原始数据" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.content }}
+          </template>
+        </el-table-column>
+        <el-table-column label="价值评分" width="120" align="center">
+          <template #default="{ row }">
+            {{ Number(row.value_score).toFixed(4) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="110" align="center">
+          <template #default="{ row }">
+            <el-button type="primary" link @click.stop="goDetail(row)">查看详情</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
 
-    <div v-else class="memory-list">
-      <MemoryCard
-        v-for="memory in memoryStore.memories"
-        :key="memory.id"
-        :memory="memory"
-        @delete="handleDelete"
-      />
-    </div>
+      <div v-if="total > 0" class="pagination-wrapper">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[20, 50, 100]"
+          :total="total"
+          layout="total, sizes, prev, pager, next"
+          @size-change="handlePageSizeChange"
+          @current-change="handlePageChange"
+        />
+      </div>
+    </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
-import { useMemoryStore } from '../stores/memory'
-import MemoryCard from '../components/MemoryCard.vue'
-
-const memoryStore = useMemoryStore()
+import { reactive, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { Search, Refresh } from '@element-plus/icons-vue'
+import { getMemoryManageList } from '../api'
+import type { MemoryManageItem } from '../api/types'
+import { formatLocalTime } from '../utils/time'
 
 const form = reactive({
-  query: '',
-  topK: 5,
-  fastOnly: false,
+  memoryId: '',
+  dateRange: null as [string, string] | null,
 })
 
-const hasSearched = ref(false)
+const router = useRouter()
+const loading = ref(false)
+const items = ref<MemoryManageItem[]>([])
+const total = ref(0)
+const currentPage = ref(1)
+const pageSize = ref(20)
 
-/** 执行查询 */
 async function handleSearch(): Promise<void> {
-  if (!form.query.trim()) {
-    ElMessage.warning('请输入查询文本')
-    return
-  }
-  hasSearched.value = true
-  await memoryStore.fetchMemories(form.query.trim(), form.topK, form.fastOnly)
+  currentPage.value = 1
+  await fetchList()
 }
 
-/** 删除记忆 */
-async function handleDelete(memoryId: string): Promise<void> {
-  await memoryStore.removeMemory(memoryId)
-  ElMessage.success('记忆已删除')
+function handleReset(): void {
+  form.memoryId = ''
+  form.dateRange = null
+  currentPage.value = 1
+  pageSize.value = 20
+  fetchList()
 }
+
+async function handlePageChange(page: number): Promise<void> {
+  currentPage.value = page
+  await fetchList()
+}
+
+async function handlePageSizeChange(size: number): Promise<void> {
+  pageSize.value = size
+  currentPage.value = 1
+  await fetchList()
+}
+
+function goDetail(row: MemoryManageItem): void {
+  router.push(`/memories/${row.memory_id}`)
+}
+
+async function fetchList(): Promise<void> {
+  loading.value = true
+  try {
+    const res = await getMemoryManageList({
+      page: currentPage.value,
+      pageSize: pageSize.value,
+      memoryId: form.memoryId.trim() || undefined,
+      startTime: form.dateRange?.[0] || undefined,
+      endTime: form.dateRange?.[1] || undefined,
+    })
+    items.value = res.logs
+    total.value = res.total
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  fetchList()
+})
 </script>
 
 <style scoped>
@@ -104,7 +165,7 @@ async function handleDelete(memoryId: string): Promise<void> {
   padding: 24px;
 }
 
-.search-card {
+.query-card {
   margin-bottom: 20px;
 }
 
@@ -113,21 +174,19 @@ async function handleDelete(memoryId: string): Promise<void> {
   font-weight: 600;
 }
 
-.search-meta {
+.list-card {
+  margin-bottom: 20px;
+}
+
+.list-header {
   display: flex;
+  align-items: center;
   gap: 8px;
-  margin-top: 12px;
 }
 
-.loading-tip {
-  padding: 16px 0;
-}
-
-.empty-tip {
-  padding: 40px 0;
-}
-
-.memory-list {
-  margin-top: 4px;
+.pagination-wrapper {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

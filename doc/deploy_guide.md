@@ -8,6 +8,7 @@
 | 1.1 | 2026-4-10 | 重写：放弃 Docker，改为 Python 本机直接运行；FastAPI 统一承载 API 和前端静态文件；更新部署步骤、环境前提、自启动说明和常见问题排查 |
 | 1.2 | 2026-4-14 | 更新 Windows 启动成功 Banner 示例，补充"后端 API 文档"行 |
 | 1.3 | 2026-4-14 | 更新获取方式：改为从 GitHub Releases 下载发布包，不再需要通过 Git 克隆源代码；新增版本升级说明 |
+| 1.4 | 2026-4-15 | 明确发布包策略：Release 仅提供可执行发布包与使用文档，不提供可下载业务源码 |
 
 ---
 
@@ -15,7 +16,7 @@
 
 本手册面向部署人员，提供在 macOS 和 Windows 操作系统上完成 AIR_Memory 系统部署的完整步骤说明。AIR_Memory 采用 Python 本机直接运行方案，用户仅需安装 **Python 3.11+** 即可完成部署，无需 Docker 或其他容器运行时。
 
-> **获取方式**：请从 [GitHub Releases 页面](https://github.com/SevenLv/air_memory/releases/latest)下载最新发布包（可执行程序），无需通过 Git 克隆源代码。
+> **获取方式**：请从 [GitHub Releases 页面](https://github.com/SevenLv/air_memory/releases/latest)下载最新发布包（可执行程序）。发布包仅包含运行所需文件和文档，不提供可下载业务源码。
 
 系统架构概览：
 
