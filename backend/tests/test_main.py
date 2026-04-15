@@ -21,6 +21,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from air_memory.main import app
 
 client = TestClient(app)
+CHARSET_REQUIREMENT_TEXT = "Content-Type: application/json; charset=UTF-8"
 
 
 # ---------------------------------------------------------------------------
@@ -59,6 +60,27 @@ def test_health_check_with_static_dir_mounted(tmp_path) -> None:
     response = test_client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_openapi_docs_include_charset_requirement() -> None:
+    """在线 API 文档应明确要求 JSON 请求显式声明 UTF-8 charset。"""
+    test_client = TestClient(app)
+    response = test_client.get("/api/v1/openapi.json")
+    assert response.status_code == 200
+
+    schema = response.json()
+    assert CHARSET_REQUIREMENT_TEXT in schema["info"]["description"]
+
+    post_paths = [
+        "/api/v1/memories",
+        "/api/v1/memories/{memory_id}/feedback",
+    ]
+    for path in post_paths:
+        assert path in schema["paths"], f"OpenAPI 缺少路径: {path}"
+        assert "post" in schema["paths"][path], f"OpenAPI 路径缺少 POST 方法: {path}"
+        assert CHARSET_REQUIREMENT_TEXT in schema["paths"][path]["post"]["description"], (
+            f"路径 {path} 的 POST 描述缺少 charset 约束"
+        )
 
 
 # ---------------------------------------------------------------------------

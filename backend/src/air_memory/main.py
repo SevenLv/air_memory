@@ -148,7 +148,12 @@ async def _disk_check_loop(disk_mgr: DiskManager) -> None:
 app = FastAPI(
     title="AIR_Memory",
     version=APP_VERSION,
-    description="AIR_Memory 后端服务 - 为 AI Agent 提供记忆存储和查询能力",
+    description=(
+        "AIR_Memory 后端服务 - 为 AI Agent 提供记忆存储和查询能力。\n\n"
+        "REST API 调用约束:\n"
+        "- 对所有 JSON 请求, 必须显式设置 `Content-Type: application/json; charset=UTF-8`.\n"
+        "- 若未显式指定 `charset=UTF-8`, 在部分客户端环境中中文内容可能出现乱码."
+    ),
     default_response_class=ORJSONResponse,  # 新增：输出真实 UTF-8 字符，避免 \uXXXX 转义
     lifespan=lifespan,
     docs_url="/api/v1/docs",
