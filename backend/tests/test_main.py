@@ -235,17 +235,17 @@ def test_cors_origins_from_env(monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_app_version_is_1_2_10() -> None:
-    """APP_VERSION 应为 v1.2.10。"""
+def test_app_version_is_1_2_11() -> None:
+    """APP_VERSION 应为 v1.2.11。"""
     from air_memory.main import APP_VERSION
-    assert APP_VERSION == "1.2.10", f"APP_VERSION 应为 '1.2.10'，实际为 '{APP_VERSION}'"
+    assert APP_VERSION == "1.2.11", f"APP_VERSION 应为 '1.2.11'，实际为 '{APP_VERSION}'"
 
 
-def test_version_api_returns_1_2_10() -> None:
-    """GET /api/v1/version 应返回版本号 1.2.10。"""
+def test_version_api_returns_1_2_11() -> None:
+    """GET /api/v1/version 应返回版本号 1.2.11。"""
     response = client.get("/api/v1/version")
     assert response.status_code == 200
-    assert response.json()["version"] == "1.2.10"
+    assert response.json()["version"] == "1.2.11"
 
 
 def test_stdin_utf8_reconfigure_logic() -> None:
