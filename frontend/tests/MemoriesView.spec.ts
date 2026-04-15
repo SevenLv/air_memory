@@ -77,9 +77,10 @@ describe('MemoriesView 视图（记忆管理）', () => {
       global: { plugins: [ElementPlus, router] },
     })
     await flushPromises()
-    const btn = wrapper.find('button.el-button--primary.is-link')
-    expect(btn.exists()).toBe(true)
-    await btn.trigger('click')
+    const detailBtn = wrapper.findAll('button').find((btn) => btn.text().includes('查看详情'))
+    expect(detailBtn).toBeDefined()
+    await detailBtn!.trigger('click')
+    await flushPromises()
     expect(router.currentRoute.value.path).toBe('/memories/mem-001')
   })
 })
