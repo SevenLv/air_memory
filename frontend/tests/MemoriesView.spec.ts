@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
+import { ElMessageBox } from 'element-plus'
 import MemoriesView from '../src/views/MemoriesView.vue'
 
 const push = vi.fn()
@@ -31,6 +32,7 @@ vi.mock('../src/api', () => ({
 describe('MemoriesView 视图', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never)
   })
 
   it('挂载后默认加载最近记忆列表并显示总数', async () => {

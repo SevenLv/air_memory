@@ -124,12 +124,13 @@ class TestLogServiceSaveLogs:
         """get_save_logs() 应返回记忆当前 value_score。"""
         memory_id = "id-304"
         await log_service.log_save(content="带评分日志", memory_id=memory_id)
+        fixed_iso = "2000-01-01T00:00:00Z"
         async with aiosqlite.connect(db_path) as db:
             await db.execute(
                 "INSERT OR REPLACE INTO memory_values "
                 "(memory_id, value_score, tier, feedback_count, created_at, updated_at) "
-                "VALUES (?, ?, 'hot', 0, '2026-04-15T00:00:00Z', '2026-04-15T00:00:00Z')",
-                (memory_id, 0.88),
+                "VALUES (?, ?, 'hot', 0, ?, ?)",
+                (memory_id, 0.88, fixed_iso, fixed_iso),
             )
             await db.commit()
         logs = await log_service.get_save_logs()

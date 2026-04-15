@@ -95,7 +95,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { Search, Refresh } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { getSaveLogs, deleteMemory } from '../api'
 import type { SaveLog } from '../api/types'
 import { formatLocalTime } from '../utils/time'
@@ -185,6 +185,16 @@ function formatValueScore(valueScore: number | null | undefined): string {
 }
 
 async function handleDelete(row: SaveLog): Promise<void> {
+  try {
+    await ElMessageBox.confirm('确定删除该记忆吗', '删除确认', {
+      type: 'warning',
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+
   try {
     await deleteMemory(row.memory_id)
     allLogs.value = allLogs.value.filter((log) => log.memory_id !== row.memory_id)
