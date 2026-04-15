@@ -49,7 +49,7 @@ v1.2.7 为维护性版本，包含启动脚本优化、API 文档补充和发布
 
 **变更内容**
 
-- `.github/workflows/release.yml`：发布时自动构建 `air_memory-{tag}.zip` 并上传至 GitHub Release Assets；
+- `.github/workflows/release.yml`：新增 Python 字节码预编译和 zip 发布包构建步骤，发布时自动生成 `air_memory-{tag}.zip` 并上传至 GitHub Release Assets；
 - `doc/deploy_guide.md` v1.3：更新获取方式，引导用户从 GitHub Releases 页面下载发布包，不再需要通过 Git 克隆源代码；
 - `README.md`：新增"获取发布包"章节，引导用户前往 GitHub Releases 页面下载最新版本。
 
@@ -63,11 +63,11 @@ v1.2.7 为维护性版本，包含启动脚本优化、API 文档补充和发布
 | `backend/src/air_memory/api/memory.py` | 文档更新 | save_memory 和 feedback_memory 接口 docstring 补充 charset 约束 |
 | `backend/pyproject.toml` | 版本更新 | version `1.2.6` -> `1.2.7` |
 | `frontend/package.json` | 版本更新 | version `1.2.5` -> `1.2.7` |
-| `start.sh` | 优化 | 版本号 v1.2.6 -> v1.2.7；保留 `pip install -e backend/` 以兼容源码包发布 |
-| `start.bat` | 优化 | 版本号 v1.2.6 -> v1.2.7；保留 `pip install --no-deps -e backend\` 以兼容源码包发布 |
+| `start.sh` | 优化 | 版本号 v1.2.6 -> v1.2.7；移除冗余的 `pip install -e backend/` |
+| `start.bat` | 优化 | 版本号 v1.2.6 -> v1.2.7；移除冗余的 `pip install --no-deps -e backend\` |
 | `README.md` | 文档更新 | 版本号 v1.2.6 -> v1.2.7；新增"获取发布包"章节；更新目录结构图 |
 | `doc/deploy_guide.md` | 文档更新 | v1.3：更新获取方式为从 GitHub Releases 下载发布包 |
-| `.github/workflows/release.yml` | 流程改进 | 新增 zip 发布包构建步骤 |
+| `.github/workflows/release.yml` | 流程改进 | 新增 zip 发布包构建和字节码预编译步骤 |
 | `doc/release_notes_v1.2.7.md` | 新增 | 本文件 |
 
 ---
