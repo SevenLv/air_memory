@@ -105,20 +105,26 @@ const allLogs = ref<SaveLog[]>([])
 const currentPage = ref(1)
 const pageSize = 20
 
+const normalizedLogs = computed(() =>
+  allLogs.value.map((log) => ({
+    ...log,
+    createdAtTs: Date.parse(log.created_at),
+  })),
+)
+
 const filteredLogs = computed(() => {
-  const memoryId = form.memoryId.trim()
+  const memoryId = form.memoryId.trim().toLowerCase()
   const startTime = form.dateRange?.[0] ? new Date(form.dateRange[0]).getTime() : null
   const endTime = form.dateRange?.[1] ? new Date(form.dateRange[1]).getTime() : null
 
-  return allLogs.value.filter((log) => {
-    if (memoryId && !log.memory_id.includes(memoryId)) {
+  return normalizedLogs.value.filter((log) => {
+    if (memoryId && !log.memory_id.toLowerCase().includes(memoryId)) {
       return false
     }
-    const ts = new Date(log.created_at).getTime()
-    if (startTime !== null && ts < startTime) {
+    if (startTime !== null && log.createdAtTs < startTime) {
       return false
     }
-    if (endTime !== null && ts > endTime) {
+    if (endTime !== null && log.createdAtTs > endTime) {
       return false
     }
     return true
@@ -157,7 +163,11 @@ function handlePageChange(page: number): void {
 }
 
 function handleRowClick(row: SaveLog): void {
-  router.push(`/memories/${encodeURIComponent(row.memory_id)}`)
+  const memoryState = { ...row }
+  router.push({
+    path: `/memories/${encodeURIComponent(row.memory_id)}`,
+    state: { memory: memoryState },
+  })
 }
 
 onMounted(() => {

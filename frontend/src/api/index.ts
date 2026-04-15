@@ -10,6 +10,7 @@ import type {
   DiskStats,
   AppVersion,
   FeedbackLogsWithTotalResponse,
+  SaveLog,
 } from './types'
 
 /** 统一 Axios 实例 */
@@ -58,6 +59,12 @@ export async function deleteMemory(memoryId: string): Promise<void> {
 /** 获取存储操作日志 */
 export async function getSaveLogs(): Promise<SaveLogsResponse> {
   const res = await apiClient.get<SaveLogsResponse>('/logs/save')
+  return res.data
+}
+
+/** 获取指定记忆的最新存储日志 */
+export async function getSaveLog(memoryId: string): Promise<SaveLog> {
+  const res = await apiClient.get<SaveLog>(`/logs/save/${memoryId}`)
   return res.data
 }
 

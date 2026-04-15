@@ -71,6 +71,11 @@ describe('MemoriesView 视图', () => {
     await detailBtn!.trigger('click')
 
     expect(push).toHaveBeenCalled()
-    expect(String(push.mock.calls[0][0])).toContain('/memories/')
+    expect(push.mock.calls[0][0]).toMatchObject({
+      path: expect.stringContaining('/memories/'),
+      state: expect.objectContaining({
+        memory: expect.objectContaining({ memory_id: expect.any(String) }),
+      }),
+    })
   })
 })

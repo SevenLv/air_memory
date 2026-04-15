@@ -35,7 +35,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getSaveLogs, getValueScore } from '../api'
+import { getSaveLog, getValueScore } from '../api'
 import type { SaveLog } from '../api/types'
 import { formatLocalTime } from '../utils/time'
 
@@ -53,6 +53,31 @@ const valueScoreText = computed(() => {
   return valueScore.value.toFixed(4)
 })
 
+function toSaveLog(value: unknown): SaveLog | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+  const v = value as Record<string, unknown>
+  if (
+    typeof v.id !== 'number' ||
+    typeof v.memory_id !== 'string' ||
+    typeof v.content !== 'string' ||
+    typeof v.created_at !== 'string' ||
+    typeof v.memory_deleted !== 'boolean' ||
+    typeof v.is_garbled !== 'boolean'
+  ) {
+    return null
+  }
+  return {
+    id: v.id,
+    memory_id: v.memory_id,
+    content: v.content,
+    created_at: v.created_at,
+    memory_deleted: v.memory_deleted,
+    is_garbled: v.is_garbled,
+  }
+}
+
 async function fetchDetail(): Promise<void> {
   const memoryId = String(route.params.memoryId || '')
   if (!memoryId) {
@@ -60,10 +85,16 @@ async function fetchDetail(): Promise<void> {
     return
   }
 
+  const stateMemory = toSaveLog(history.state?.memory || null)
+  if (stateMemory && stateMemory.memory_id === memoryId) {
+    detail.value = stateMemory
+  }
+
   loading.value = true
   try {
-    const logsRes = await getSaveLogs()
-    detail.value = logsRes.logs.find((item) => item.memory_id === memoryId) || null
+    if (!detail.value) {
+      detail.value = await getSaveLog(memoryId)
+    }
     if (detail.value && !detail.value.memory_deleted) {
       const scoreRes = await getValueScore(memoryId)
       valueScore.value = scoreRes.value_score

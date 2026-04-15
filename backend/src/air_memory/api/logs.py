@@ -1,9 +1,9 @@
 """日志查询 REST API 路由。"""
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from air_memory.models.feedback import FeedbackLogsWithTotalResponse
-from air_memory.models.log import QueryLogsResponse, SaveLogsResponse
+from air_memory.models.log import QueryLogsResponse, SaveLog, SaveLogsResponse
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 
@@ -14,6 +14,16 @@ async def get_save_logs(request: Request):
     log_svc = request.app.state.log_service
     logs = await log_svc.get_save_logs()
     return SaveLogsResponse(logs=logs, count=len(logs))
+
+
+@router.get("/save/{memory_id}", response_model=SaveLog)
+async def get_save_log(memory_id: str, request: Request):
+    """查询指定记忆的最新存储日志。"""
+    log_svc = request.app.state.log_service
+    log = await log_svc.get_save_log(memory_id)
+    if log is None:
+        raise HTTPException(status_code=404, detail=f"记忆不存在：{memory_id}")
+    return log
 
 
 @router.get("/query", response_model=QueryLogsResponse)

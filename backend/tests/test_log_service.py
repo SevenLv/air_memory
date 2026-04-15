@@ -119,6 +119,23 @@ class TestLogServiceSaveLogs:
         # 最新写入的应排在前面
         assert logs[0].id > logs[1].id
 
+    @pytest.mark.asyncio
+    async def test_get_save_log_returns_latest_by_memory_id(self, log_service):
+        """get_save_log() 应返回指定 memory_id 的最新日志。"""
+        memory_id = "id-303"
+        await log_service.log_save(content="旧内容", memory_id=memory_id)
+        await log_service.log_save(content="新内容", memory_id=memory_id)
+        log = await log_service.get_save_log(memory_id)
+        assert log is not None
+        assert log.memory_id == memory_id
+        assert log.content == "新内容"
+
+    @pytest.mark.asyncio
+    async def test_get_save_log_returns_none_when_not_found(self, log_service):
+        """get_save_log() 查询不存在 memory_id 时应返回 None。"""
+        log = await log_service.get_save_log("not-exists")
+        assert log is None
+
 
 class TestLogServiceQueryLogs:
     """测试 LogService 查询操作日志。"""

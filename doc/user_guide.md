@@ -101,7 +101,7 @@ sequenceDiagram
     用户->>前端: 设置 ID 或时间范围并点击查询
     前端-->>用户: 展示筛选后的分页结果（每页20条）
     用户->>前端: 点击"查看详情"
-    前端->>后端API: GET /api/v1/logs/save
+    前端->>后端API: GET /api/v1/logs/save/{memory_id}
     前端->>后端API: GET /api/v1/memories/{memory_id}/value-score
     后端API-->>前端: 记忆详情 + 价值评分
     前端-->>用户: 展示完整记忆字段

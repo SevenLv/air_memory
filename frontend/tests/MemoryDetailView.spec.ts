@@ -11,18 +11,13 @@ vi.mock('vue-router', () => ({
 }))
 
 vi.mock('../src/api', () => ({
-  getSaveLogs: vi.fn().mockResolvedValue({
-    logs: [
-      {
-        id: 1,
-        memory_id: 'mem-001',
-        content: '这是一条原始记忆',
-        created_at: '2026-04-15T03:00:00Z',
-        memory_deleted: false,
-        is_garbled: false,
-      },
-    ],
-    count: 1,
+  getSaveLog: vi.fn().mockResolvedValue({
+    id: 1,
+    memory_id: 'mem-001',
+    content: '这是一条原始记忆',
+    created_at: '2026-04-15T03:00:00Z',
+    memory_deleted: false,
+    is_garbled: false,
   }),
   getValueScore: vi.fn().mockResolvedValue({
     memory_id: 'mem-001',

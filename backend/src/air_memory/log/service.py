@@ -91,6 +91,27 @@ class LogService:
             for row in rows
         ]
 
+    async def get_save_log(self, memory_id: str) -> SaveLog | None:
+        """查询指定 memory_id 的最新一条存储日志。"""
+        async with aiosqlite.connect(settings.DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT id, memory_id, content, created_at, memory_deleted"
+                " FROM save_logs WHERE memory_id = ? ORDER BY id DESC LIMIT 1",
+                (memory_id,),
+            ) as cursor:
+                row = await cursor.fetchone()
+        if row is None:
+            return None
+        return SaveLog(
+            id=row["id"],
+            memory_id=row["memory_id"],
+            content=row["content"],
+            created_at=row["created_at"],
+            memory_deleted=bool(row["memory_deleted"]),
+            is_garbled=_is_garbled(row["content"]),
+        )
+
     async def get_query_logs(self) -> list[QueryLog]:
         """查询所有查询操作日志（按 id 降序）。"""
         async with aiosqlite.connect(settings.DB_PATH) as db:
