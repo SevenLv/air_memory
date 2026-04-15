@@ -75,8 +75,11 @@ class LogService:
         async with aiosqlite.connect(settings.DB_PATH) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT id, memory_id, content, created_at, memory_deleted"
-                " FROM save_logs ORDER BY id DESC"
+                "SELECT s.id, s.memory_id, s.content, s.created_at, s.memory_deleted,"
+                " mv.value_score"
+                " FROM save_logs s"
+                " LEFT JOIN memory_values mv ON mv.memory_id = s.memory_id"
+                " ORDER BY s.id DESC"
             ) as cursor:
                 rows = await cursor.fetchall()
         return [
@@ -86,6 +89,7 @@ class LogService:
                 content=row["content"],
                 created_at=row["created_at"],
                 memory_deleted=bool(row["memory_deleted"]),
+                value_score=row["value_score"],
                 is_garbled=_is_garbled(row["content"]),
             )
             for row in rows
@@ -96,8 +100,11 @@ class LogService:
         async with aiosqlite.connect(settings.DB_PATH) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT id, memory_id, content, created_at, memory_deleted"
-                " FROM save_logs WHERE memory_id = ? ORDER BY id DESC LIMIT 1",
+                "SELECT s.id, s.memory_id, s.content, s.created_at, s.memory_deleted,"
+                " mv.value_score"
+                " FROM save_logs s"
+                " LEFT JOIN memory_values mv ON mv.memory_id = s.memory_id"
+                " WHERE s.memory_id = ? ORDER BY s.id DESC LIMIT 1",
                 (memory_id,),
             ) as cursor:
                 row = await cursor.fetchone()
@@ -109,6 +116,7 @@ class LogService:
             content=row["content"],
             created_at=row["created_at"],
             memory_deleted=bool(row["memory_deleted"]),
+            value_score=row["value_score"],
             is_garbled=_is_garbled(row["content"]),
         )
 

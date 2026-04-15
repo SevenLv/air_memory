@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
+import { ElMessageBox } from 'element-plus'
 import MemoriesView from '../src/views/MemoriesView.vue'
 
 const push = vi.fn()
@@ -18,17 +19,20 @@ vi.mock('../src/api', () => ({
         memory_id: `mem-${String(n).padStart(3, '0')}`,
         content: `内容-${n}`,
         created_at: `2026-04-${String((n % 28) + 1).padStart(2, '0')}T10:00:00Z`,
-        memory_deleted: false,
+        memory_deleted: n === 24,
+        value_score: Number((n / 100).toFixed(2)),
         is_garbled: false,
       }
     }),
     count: 25,
   }),
+  deleteMemory: vi.fn().mockResolvedValue(undefined),
 }))
 
 describe('MemoriesView 视图', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never)
   })
 
   it('挂载后默认加载最近记忆列表并显示总数', async () => {
@@ -40,8 +44,10 @@ describe('MemoriesView 视图', () => {
 
     expect(getSaveLogs).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('记忆管理')
-    expect(wrapper.text()).toContain('共 25 条记忆')
+    expect(wrapper.text()).toContain('共 24 条记忆')
     expect(wrapper.text()).toContain('mem-025')
+    expect(wrapper.text()).not.toContain('mem-024')
+    expect(wrapper.text()).toContain('0.25')
     expect(wrapper.text()).not.toContain('mem-001')
   })
 
@@ -77,5 +83,24 @@ describe('MemoriesView 视图', () => {
         memory: expect.objectContaining({ memory_id: expect.any(String) }),
       }),
     })
+  })
+
+  it('点击删除后调用删除接口并从列表移除', async () => {
+    const { deleteMemory } = await import('../src/api')
+    const wrapper = mount(MemoriesView, {
+      global: { plugins: [ElementPlus] },
+    })
+    await flushPromises()
+
+    const rowTextBefore = wrapper.text()
+    expect(rowTextBefore).toContain('mem-025')
+
+    const deleteBtn = wrapper.findAll('button').find((btn) => btn.text().includes('删除'))
+    expect(deleteBtn).toBeTruthy()
+    await deleteBtn!.trigger('click')
+    await flushPromises()
+
+    expect(deleteMemory).toHaveBeenCalledWith('mem-025')
+    expect(wrapper.text()).not.toContain('mem-025')
   })
 })

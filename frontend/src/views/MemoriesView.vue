@@ -53,24 +53,30 @@
     </div>
 
     <div v-else class="memory-list">
-      <el-table :data="pagedLogs" @row-click="handleRowClick">
-        <el-table-column prop="memory_id" label="记忆 ID" min-width="280" show-overflow-tooltip />
-        <el-table-column label="原始数据" min-width="320" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ row.content }}
-          </template>
-        </el-table-column>
-        <el-table-column label="提交时间" width="200">
-          <template #default="{ row }">
-            {{ formatLocalTime(row.created_at) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="120" align="center">
-          <template #default="{ row }">
-            <el-button type="primary" link @click.stop="handleRowClick(row)">查看详情</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+        <el-table :data="pagedLogs" @row-click="handleRowClick">
+          <el-table-column prop="memory_id" label="记忆 ID" min-width="280" show-overflow-tooltip />
+          <el-table-column label="原始数据" min-width="320" show-overflow-tooltip>
+            <template #default="{ row }">
+              {{ row.content }}
+            </template>
+          </el-table-column>
+          <el-table-column label="评价值" width="100" align="center">
+            <template #default="{ row }">
+              {{ formatValueScore(row.value_score) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="提交时间" width="200">
+            <template #default="{ row }">
+              {{ formatLocalTime(row.created_at) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="170" align="center">
+            <template #default="{ row }">
+              <el-button type="primary" link @click.stop="handleRowClick(row)">查看详情</el-button>
+              <el-button type="danger" link @click.stop="handleDelete(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
 
       <div class="pagination-wrapper">
         <el-pagination
@@ -89,7 +95,8 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { Search, Refresh } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
-import { getSaveLogs } from '../api'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { getSaveLogs, deleteMemory } from '../api'
 import type { SaveLog } from '../api/types'
 import { formatLocalTime } from '../utils/time'
 
@@ -118,6 +125,9 @@ const filteredLogs = computed(() => {
   const endTime = form.dateRange?.[1] ? new Date(form.dateRange[1]).getTime() : null
 
   return normalizedLogs.value.filter((log) => {
+    if (log.memory_deleted) {
+      return false
+    }
     if (memoryId && !log.memory_id.toLowerCase().includes(memoryId)) {
       return false
     }
@@ -168,6 +178,31 @@ function handleRowClick(row: SaveLog): void {
     path: `/memories/${encodeURIComponent(row.memory_id)}`,
     state: { memory: memoryState },
   })
+}
+
+function formatValueScore(valueScore: number | null | undefined): string {
+  return typeof valueScore === 'number' ? valueScore.toFixed(2) : '--'
+}
+
+async function handleDelete(row: SaveLog): Promise<void> {
+  try {
+    await ElMessageBox.confirm('确定删除该记忆吗', '删除确认', {
+      type: 'warning',
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+
+  try {
+    await deleteMemory(row.memory_id)
+    allLogs.value = allLogs.value.filter((log) => log.memory_id !== row.memory_id)
+    currentPage.value = 1
+    ElMessage.success('删除成功')
+  } catch {
+    // 错误提示由 API 拦截器统一处理
+  }
 }
 
 onMounted(() => {
