@@ -5,7 +5,7 @@
 - STATIC_DIR 未配置时不挂载静态文件
 - STATIC_DIR 存在时挂载静态文件并支持 SPA 回退
 - CORS_ORIGINS 环境变量配置
-- v1.2.7 API charset=UTF-8 调用约束文档补充
+- v1.2.8 版本号验证
 """
 
 import os
@@ -231,21 +231,21 @@ def test_cors_origins_from_env(monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# v1.2.7 版本号与 API charset 文档验证
+# v1.2.8 版本号验证
 # ---------------------------------------------------------------------------
 
 
-def test_app_version_is_1_2_7() -> None:
-    """APP_VERSION 应为 v1.2.7。"""
+def test_app_version_is_1_2_8() -> None:
+    """APP_VERSION 应为 v1.2.8。"""
     from air_memory.main import APP_VERSION
-    assert APP_VERSION == "1.2.7", f"APP_VERSION 应为 '1.2.7'，实际为 '{APP_VERSION}'"
+    assert APP_VERSION == "1.2.8", f"APP_VERSION 应为 '1.2.8'，实际为 '{APP_VERSION}'"
 
 
-def test_version_api_returns_1_2_7() -> None:
-    """GET /api/v1/version 应返回版本号 1.2.7。"""
+def test_version_api_returns_1_2_8() -> None:
+    """GET /api/v1/version 应返回版本号 1.2.8。"""
     response = client.get("/api/v1/version")
     assert response.status_code == 200
-    assert response.json()["version"] == "1.2.7"
+    assert response.json()["version"] == "1.2.8"
 
 
 def test_stdin_utf8_reconfigure_logic() -> None:

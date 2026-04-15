@@ -51,7 +51,7 @@ jobs:
         run: |
           gh release create "${{ github.event.inputs.tag }}" \
             --title "AIR_Memory ${{ github.event.inputs.tag }}" \
-            --notes-file doc/release_notes_v1.2.7.md \
+            --notes-file doc/release_notes_v1.2.8.md \
             "${PKG_NAME}.zip" \
             doc/deploy_guide.md \
             doc/user_guide.md
