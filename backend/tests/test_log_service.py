@@ -120,6 +120,24 @@ class TestLogServiceSaveLogs:
         assert logs[0].id > logs[1].id
 
     @pytest.mark.asyncio
+    async def test_get_save_logs_contains_value_score(self, log_service, db_path):
+        """get_save_logs() 应返回记忆当前 value_score。"""
+        memory_id = "id-304"
+        await log_service.log_save(content="带评分日志", memory_id=memory_id)
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute(
+                "INSERT OR REPLACE INTO memory_values "
+                "(memory_id, value_score, tier, feedback_count, created_at, updated_at) "
+                "VALUES (?, ?, 'hot', 0, '2026-04-15T00:00:00Z', '2026-04-15T00:00:00Z')",
+                (memory_id, 0.88),
+            )
+            await db.commit()
+        logs = await log_service.get_save_logs()
+        target = next((l for l in logs if l.memory_id == memory_id), None)
+        assert target is not None
+        assert target.value_score == pytest.approx(0.88)
+
+    @pytest.mark.asyncio
     async def test_get_save_log_returns_latest_by_memory_id(self, log_service):
         """get_save_log() 应返回指定 memory_id 的最新日志。"""
         memory_id = "id-303"

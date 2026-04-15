@@ -11,6 +11,7 @@ class SaveLog(BaseModel):
     content: str
     created_at: str
     memory_deleted: bool
+    value_score: float | None = None
     is_garbled: bool = False  # 新增：服务端计算的乱码检测结果
 
 
