@@ -114,6 +114,7 @@ source .venv/bin/activate
 echo "[2/4] 安装 Python 依赖（首次约 2~5 分钟）..."
 python -m pip install --quiet --upgrade pip
 pip install --quiet -r backend/requirements.txt
+pip install --quiet --no-deps -e backend/
 
 # 准备数据目录
 echo "[3/4] 准备数据目录..."
