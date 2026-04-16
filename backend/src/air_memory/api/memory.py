@@ -35,11 +35,7 @@ async def save_memory(
     body: MemorySaveRequest,
     request: Request,
 ):
-    """存储一条记忆，初始存入冷层，返回 memory_id。
-
-    调用方必须在请求头中显式设置:
-    `Content-Type: application/json; charset=UTF-8`。
-    """
+    """存储一条记忆，初始存入冷层，返回 memory_id。"""
     memory_svc = _get_memory_service(request)
     feedback_svc = _get_feedback_service(request)
     log_svc = _get_log_service(request)
@@ -128,11 +124,7 @@ async def feedback_memory(
     body: MemoryFeedbackRequest,
     request: Request,
 ):
-    """提交记忆价值反馈，更新 value_score，触发层间迁移。
-
-    调用方必须在请求头中显式设置:
-    `Content-Type: application/json; charset=UTF-8`。
-    """
+    """提交记忆价值反馈，更新 value_score，触发层间迁移。"""
     feedback_svc = _get_feedback_service(request)
 
     try:

@@ -13,6 +13,7 @@
 | 1.6 | 2026-4-15 | 2.3 节更新记忆管理 UI：默认最近列表、每页 20 条分页、按 ID/时间范围筛选、详情页字段说明；补充本次升级数据影响分析结论（无需迁移本地数据） |
 | 1.7 | 2026-4-15 | 2.3 节补充记忆列表操作能力：操作列增加删除按钮、列表过滤已删除数据、新增评价值列展示 |
 | 1.8 | 2026-4-15 | 2.4 节补充操作日志时间范围筛选与分页；2.3 节补充记忆列表评价值分级背景色说明 |
+| 1.9 | 2026-4-16 | 3.2 节更新 REST API Content-Type 说明：v1.2.12 起服务端自动按 UTF-8 处理，客户端无需显式设置 charset |
 
 ---
 
@@ -322,12 +323,12 @@ AIR_Memory MCP Server 暴露以下三个工具：
 | 项目 | 说明 |
 | --- | --- |
 | 基础 URL | `http://localhost:8080/api/v1` |
-| 数据格式 | JSON（`Content-Type: application/json; charset=UTF-8`） |
+| 数据格式 | JSON（`Content-Type: application/json`） |
 | API 文档 | `http://localhost:8080/api/v1/docs`（Swagger UI） |
 
-> 重要约束: 对所有包含 JSON 请求体的 REST API 调用, 必须显式设置
-> `Content-Type: application/json; charset=UTF-8`。不建议省略 `charset`,
-> 否则在部分客户端环境中可能出现中文内容乱码。
+> 说明: 对所有包含 JSON 请求体的 REST API 调用, 需设置 `Content-Type: application/json`。
+> v1.2.12 起, 服务端新增 UTF-8 强制中间件, 即使客户端未声明 `charset`, 服务端也会自动按 UTF-8 处理请求体, 中文内容不再乱码。
+> 兼容性: 若客户端仍设置 `Content-Type: application/json; charset=UTF-8`, 服务端行为不变。
 
 **通用成功响应格式**：
 
@@ -376,7 +377,7 @@ curl 示例：
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/memories \
-  -H "Content-Type: application/json; charset=UTF-8" \
+  -H "Content-Type: application/json" \
   -d '{"content": "用户偏好使用深色主题，字体大小设置为 16px"}'
 ```
 
@@ -472,7 +473,7 @@ curl 示例：
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/memories/a1b2c3d4-e5f6-7890-abcd-ef1234567890/feedback \
-  -H "Content-Type: application/json; charset=UTF-8" \
+  -H "Content-Type: application/json" \
   -d '{"valuable": true}'
 ```
 

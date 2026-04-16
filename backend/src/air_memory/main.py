@@ -6,6 +6,7 @@
 import asyncio
 import logging
 import os
+import re
 import sys
 from contextlib import asynccontextmanager
 
@@ -26,7 +27,7 @@ from air_memory.mcp.server import init_mcp_services, mcp
 from air_memory.memory.service import MemoryService
 from air_memory.memory.tier_manager import TierManager
 
-APP_VERSION = "1.2.11"
+APP_VERSION = "1.2.12"
 
 # 在 Python 运行时强制 UTF-8 I/O 编码（防御性措施）
 # 注意：PYTHONUTF8=1 必须在 Python 启动前设置（见 start.bat/start.sh）；
@@ -87,6 +88,41 @@ if sys.platform == "win32" and sys.flags.utf8_mode == 0:
         "在非 CJK Windows（如 CP1252 代码页）上，中文内容可能因 locale 编码被损坏为问号。\n"
         "请在 start.bat 中确认 'set PYTHONUTF8=1' 已生效。"
     )
+
+
+class _ForceUTF8JSONMiddleware:
+    """强制 application/json 请求的 Content-Type charset 为 UTF-8 的 ASGI 中间件。
+
+    根因：JSON RFC 8259 规定 JSON 默认编码为 UTF-8，但部分 AI 工具调用框架
+    （如 Claude tool_call）可能不设置 charset 或设置错误的 charset（如 iso-8859-1），
+    服务端应主动将 charset 覆写为 utf-8，确保中文内容始终正确解码。
+
+    使用纯 ASGI 中间件（非 BaseHTTPMiddleware），零额外性能开销。
+    """
+
+    def __init__(self, app) -> None:
+        self._app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] == "http":
+            new_headers = []
+            for name, value in scope["headers"]:
+                if name.lower() == b"content-type":
+                    ct = value.decode("latin-1")
+                    if "application/json" in ct.lower():
+                        # 移除已有 charset 参数（含普通值和引号值），统一追加 charset=utf-8
+                        # 支持: charset=utf-8, charset="utf-8", charset='utf-8' 等格式
+                        ct = re.sub(
+                            r';\s*charset\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^;]*)',
+                            "",
+                            ct,
+                            flags=re.IGNORECASE,
+                        )
+                        ct = ct.strip() + "; charset=utf-8"
+                        value = ct.encode("latin-1")
+                new_headers.append((name, value))
+            scope["headers"] = new_headers
+        await self._app(scope, receive, send)
 
 
 @asynccontextmanager
@@ -151,8 +187,8 @@ app = FastAPI(
     description=(
         "AIR_Memory 后端服务 - 为 AI Agent 提供记忆存储和查询能力。\n\n"
         "REST API 调用约束:\n"
-        "- 对所有 JSON 请求, 必须显式设置 `Content-Type: application/json; charset=UTF-8`.\n"
-        "- 若未显式指定 `charset=UTF-8`, 在部分客户端环境中中文内容可能出现乱码."
+        "- 对所有 JSON 请求, 请求头设置 `Content-Type: application/json` 即可.\n"
+        "- 服务端已内置 UTF-8 强制中间件, 无论客户端是否设置 charset, 均按 UTF-8 处理请求体."
     ),
     default_response_class=ORJSONResponse,  # 新增：输出真实 UTF-8 字符，避免 \uXXXX 转义
     lifespan=lifespan,
@@ -174,6 +210,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 强制 JSON 请求 charset 为 UTF-8（防御客户端遗漏或错误设置 charset 导致中文乱码）
+app.add_middleware(_ForceUTF8JSONMiddleware)
 
 # 注册 REST API 路由
 app.include_router(router)
