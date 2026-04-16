@@ -258,3 +258,92 @@ class TestAPIEncoding:
         # 响应体可被正确 UTF-8 解码（如编码错误会引发异常）
         resp_text = save_resp.text
         assert resp_text is not None
+
+    @pytest.mark.asyncio
+    async def test_save_memory_no_charset_chinese(self, client):
+        """客户端不设置 charset 时，中文记忆内容应正确存储，不出现乱码。(Issue #charset fix 回归测试)"""
+        content = "无charset场景：这段中文必须完整保存不乱码"
+        # 显式发送 Content-Type: application/json（不含 charset）
+        save_resp = await client.post(
+            "/api/v1/memories",
+            content=json.dumps({"content": content}, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        assert save_resp.status_code == 201, f"存储失败：{save_resp.text}"
+
+        # 查询并验证内容完整
+        query_resp = await client.get(
+            "/api/v1/memories",
+            params={"query": content, "top_k": 5, "fast_only": False},
+        )
+        assert query_resp.status_code == 200
+        memories = query_resp.json()["memories"]
+        assert len(memories) > 0, "未找到任何记忆"
+        assert memories[0]["content"] == content, (
+            f"无 charset 场景中文内容损坏：期望 {content!r}，实际 {memories[0]['content']!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_save_memory_wrong_charset_chinese(self, client):
+        """客户端设置错误 charset=iso-8859-1 时，服务端中间件应强制用 UTF-8 解码，中文不乱码。"""
+        content = "错误charset场景：服务端强制UTF-8后中文完整"
+        # 显式发送错误的 charset=iso-8859-1（实际内容仍是 UTF-8 字节）
+        save_resp = await client.post(
+            "/api/v1/memories",
+            content=json.dumps({"content": content}, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json; charset=iso-8859-1"},
+        )
+        assert save_resp.status_code == 201, f"存储失败：{save_resp.text}"
+
+        # 查询并验证内容完整
+        query_resp = await client.get(
+            "/api/v1/memories",
+            params={"query": content, "top_k": 5, "fast_only": False},
+        )
+        assert query_resp.status_code == 200
+        memories = query_resp.json()["memories"]
+        assert len(memories) > 0, "未找到任何记忆"
+        assert memories[0]["content"] == content, (
+            f"错误 charset 场景中文内容损坏：期望 {content!r}，实际 {memories[0]['content']!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_force_utf8_middleware_normalizes_charset(self, test_app):
+        """验证 _ForceUTF8JSONMiddleware 正确覆写 charset 参数。"""
+        from air_memory.main import _ForceUTF8JSONMiddleware
+        import re
+
+        # 模拟 ASGI scope
+        test_cases = [
+            # (输入 Content-Type, 期望包含的字符串)
+            (b"application/json", "charset=utf-8"),
+            (b"application/json; charset=iso-8859-1", "charset=utf-8"),
+            (b"application/json; charset=UTF-8", "charset=utf-8"),
+            (b"application/json; charset=latin1", "charset=utf-8"),
+            (b"text/plain", None),  # 非 JSON 类型不修改
+        ]
+
+        for input_ct, expected_contains in test_cases:
+            captured_headers = []
+
+            async def mock_app(scope, receive, send):
+                captured_headers.extend(scope["headers"])
+
+            middleware = _ForceUTF8JSONMiddleware(mock_app)
+            scope = {
+                "type": "http",
+                "headers": [(b"content-type", input_ct)],
+            }
+            await middleware(scope, lambda: None, lambda: None)
+
+            result_ct = dict(captured_headers).get(b"content-type", b"").decode("latin-1")
+
+            if expected_contains:
+                assert expected_contains in result_ct.lower(), (
+                    f"Content-Type '{input_ct.decode()}' 未被正确覆写：实际为 '{result_ct}'"
+                )
+            else:
+                # 非 JSON 类型，charset 不应被添加
+                assert result_ct == input_ct.decode("latin-1"), (
+                    f"非 JSON Content-Type 被意外修改：'{result_ct}'"
+                )

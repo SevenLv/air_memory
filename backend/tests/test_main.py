@@ -21,7 +21,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from air_memory.main import app
 
 client = TestClient(app)
-CHARSET_REQUIREMENT_TEXT = "Content-Type: application/json; charset=UTF-8"
+CHARSET_REQUIREMENT_TEXT = "UTF-8 强制中间件"
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +63,7 @@ def test_health_check_with_static_dir_mounted(tmp_path) -> None:
 
 
 def test_openapi_docs_include_charset_requirement() -> None:
-    """在线 API 文档应明确要求 JSON 请求显式声明 UTF-8 charset。"""
+    """在线 API 文档应说明服务端内置 UTF-8 强制中间件，无需客户端显式设置 charset。"""
     test_client = TestClient(app)
     response = test_client.get("/api/v1/openapi.json")
     assert response.status_code == 200
@@ -78,9 +78,116 @@ def test_openapi_docs_include_charset_requirement() -> None:
     for path in post_paths:
         assert path in schema["paths"], f"OpenAPI 缺少路径: {path}"
         assert "post" in schema["paths"][path], f"OpenAPI 路径缺少 POST 方法: {path}"
-        assert CHARSET_REQUIREMENT_TEXT in schema["paths"][path]["post"]["description"], (
-            f"路径 {path} 的 POST 描述缺少 charset 约束"
-        )
+
+
+# ---------------------------------------------------------------------------
+# _ForceUTF8JSONMiddleware 中间件测试
+# ---------------------------------------------------------------------------
+
+
+def test_force_utf8_middleware_adds_charset_when_missing() -> None:
+    """当 Content-Type 为 application/json 且未携带 charset 时，中间件应追加 charset=utf-8。"""
+    from air_memory.main import _ForceUTF8JSONMiddleware
+    from starlette.applications import Starlette
+    from starlette.requests import Request
+    from starlette.responses import PlainTextResponse
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    captured_ct = {}
+
+    async def inspect_view(request: Request):
+        captured_ct["value"] = request.headers.get("content-type", "")
+        return PlainTextResponse("ok")
+
+    inner_app = Starlette(routes=[Route("/test", inspect_view, methods=["POST"])])
+    wrapped = _ForceUTF8JSONMiddleware(inner_app)
+    test_client = TestClient(wrapped)
+
+    test_client.post("/test", content=b'{"a":1}', headers={"Content-Type": "application/json"})
+    assert "charset=utf-8" in captured_ct["value"], f"期望追加 charset=utf-8，实际: {captured_ct['value']}"
+
+
+def test_force_utf8_middleware_replaces_wrong_charset() -> None:
+    """当 Content-Type 携带错误的 charset（如 iso-8859-1）时，中间件应替换为 utf-8。"""
+    from air_memory.main import _ForceUTF8JSONMiddleware
+    from starlette.applications import Starlette
+    from starlette.requests import Request
+    from starlette.responses import PlainTextResponse
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    captured_ct = {}
+
+    async def inspect_view(request: Request):
+        captured_ct["value"] = request.headers.get("content-type", "")
+        return PlainTextResponse("ok")
+
+    inner_app = Starlette(routes=[Route("/test", inspect_view, methods=["POST"])])
+    wrapped = _ForceUTF8JSONMiddleware(inner_app)
+    test_client = TestClient(wrapped)
+
+    test_client.post(
+        "/test",
+        content=b'{"a":1}',
+        headers={"Content-Type": "application/json; charset=iso-8859-1"},
+    )
+    assert "charset=utf-8" in captured_ct["value"], f"期望 charset 被替换为 utf-8，实际: {captured_ct['value']}"
+    assert "iso-8859-1" not in captured_ct["value"], "旧 charset iso-8859-1 应已被移除"
+
+
+def test_force_utf8_middleware_handles_quoted_charset() -> None:
+    """当 Content-Type 携带引号形式的 charset（如 charset=\"utf-8\"）时，中间件应正确替换。"""
+    from air_memory.main import _ForceUTF8JSONMiddleware
+    from starlette.applications import Starlette
+    from starlette.requests import Request
+    from starlette.responses import PlainTextResponse
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    captured_ct = {}
+
+    async def inspect_view(request: Request):
+        captured_ct["value"] = request.headers.get("content-type", "")
+        return PlainTextResponse("ok")
+
+    inner_app = Starlette(routes=[Route("/test", inspect_view, methods=["POST"])])
+    wrapped = _ForceUTF8JSONMiddleware(inner_app)
+    test_client = TestClient(wrapped)
+
+    # 直接构造带引号 charset 的 Content-Type
+    test_client.post(
+        "/test",
+        content=b'{"a":1}',
+        headers={"Content-Type": 'application/json; charset="iso-8859-1"'},
+    )
+    ct = captured_ct["value"]
+    assert "charset=utf-8" in ct, f"期望 charset 被替换为 utf-8，实际: {ct}"
+    assert "iso-8859-1" not in ct, "引号形式的旧 charset 应已被移除"
+
+
+def test_force_utf8_middleware_does_not_modify_non_json() -> None:
+    """非 application/json 请求的 Content-Type 不应被中间件修改。"""
+    from air_memory.main import _ForceUTF8JSONMiddleware
+    from starlette.applications import Starlette
+    from starlette.requests import Request
+    from starlette.responses import PlainTextResponse
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    captured_ct = {}
+
+    async def inspect_view(request: Request):
+        captured_ct["value"] = request.headers.get("content-type", "")
+        return PlainTextResponse("ok")
+
+    inner_app = Starlette(routes=[Route("/test", inspect_view, methods=["POST"])])
+    wrapped = _ForceUTF8JSONMiddleware(inner_app)
+    test_client = TestClient(wrapped)
+
+    original_ct = "text/plain; charset=iso-8859-1"
+    test_client.post("/test", content=b"hello", headers={"Content-Type": original_ct})
+    assert captured_ct["value"] == original_ct, f"非 JSON 请求的 Content-Type 不应被修改，实际: {captured_ct['value']}"
 
 
 # ---------------------------------------------------------------------------
@@ -235,17 +342,17 @@ def test_cors_origins_from_env(monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_app_version_is_1_2_11() -> None:
-    """APP_VERSION 应为 v1.2.11。"""
+def test_app_version_is_1_2_12() -> None:
+    """APP_VERSION 应为 v1.2.12。"""
     from air_memory.main import APP_VERSION
-    assert APP_VERSION == "1.2.11", f"APP_VERSION 应为 '1.2.11'，实际为 '{APP_VERSION}'"
+    assert APP_VERSION == "1.2.12", f"APP_VERSION 应为 '1.2.12'，实际为 '{APP_VERSION}'"
 
 
-def test_version_api_returns_1_2_11() -> None:
-    """GET /api/v1/version 应返回版本号 1.2.11。"""
+def test_version_api_returns_1_2_12() -> None:
+    """GET /api/v1/version 应返回版本号 1.2.12。"""
     response = client.get("/api/v1/version")
     assert response.status_code == 200
-    assert response.json()["version"] == "1.2.11"
+    assert response.json()["version"] == "1.2.12"
 
 
 def test_stdin_utf8_reconfigure_logic() -> None:
