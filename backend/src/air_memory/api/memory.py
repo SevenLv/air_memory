@@ -71,7 +71,7 @@ async def query_memories(
     request: Request,
     query: str = Query(..., min_length=1, description="查询文本"),
     top_k: int = Query(default=5, ge=1, le=100, description="返回条数"),
-    fast_only: bool = Query(default=False, description="是否仅查询热层"),
+    fast_only: bool = Query(default=True, description="是否仅查询热层，默认 True（仅搜索热层）"),
 ):
     """查询相关记忆，支持快速（热层）和深度（热层+冷层）两种模式。"""
     memory_svc = _get_memory_service(request)

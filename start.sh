@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# AIR_Memory 一键启动脚本（macOS / Linux）
+# AIR_Memory 启动脚本（macOS / Linux）
 # 用法：bash start.sh [--install | --uninstall]
 #   --install    安装 macOS LaunchAgent 自启动
 #   --uninstall  卸载 macOS LaunchAgent 自启动
+# 说明：首次部署请先运行 init.sh 完成环境初始化，再使用本脚本启动服务。
 # ==============================================================================
 
 set -euo pipefail
@@ -20,12 +21,6 @@ if [ "${1:-}" = "--install" ]; then
     echo "=========================================="
     echo " 安装 AIR_Memory LaunchAgent 自启动"
     echo "=========================================="
-
-    PYTHON3=$(command -v python3 || true)
-    if [ -z "$PYTHON3" ]; then
-        echo "[错误] 未检测到 python3，请先安装 Python 3.11+。"
-        exit 1
-    fi
 
     cat > "$PLIST_PATH" << PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -76,49 +71,18 @@ fi
 
 # ---------- 正常启动 ----------
 echo "=========================================="
-echo " AIR_Memory 一键启动 v1.2.12"
+echo " AIR_Memory 启动 v1.3.0"
 echo "=========================================="
 
-# 检查 Python 3.11+
-PYTHON3=""
-for cmd in python3.11 python3.12 python3.13 python3; do
-    if command -v "$cmd" &>/dev/null; then
-        VER=$("$cmd" -c "import sys; print(sys.version_info >= (3, 11))" 2>/dev/null || echo "False")
-        if [ "$VER" = "True" ]; then
-            PYTHON3="$cmd"
-            break
-        fi
-    fi
-done
-
-if [ -z "$PYTHON3" ]; then
-    echo "[错误] 未检测到 Python 3.11+，请先安装。"
-    echo "       macOS 安装：brew install python@3.11"
-    echo "       官方下载：https://www.python.org/downloads/"
-    exit 1
-fi
-
-PYTHON_VER=$("$PYTHON3" --version)
-echo "[检查] 使用 ${PYTHON_VER} (${PYTHON3})"
-
-# 创建虚拟环境（如不存在）
+# 检查虚拟环境是否已初始化
 if [ ! -d ".venv" ]; then
-    echo "[1/4] 创建 Python 虚拟环境..."
-    "$PYTHON3" -m venv .venv
+    echo "[错误] 未检测到 Python 虚拟环境（.venv），请先运行初始化脚本："
+    echo "       bash init.sh"
+    exit 1
 fi
 
 # 激活虚拟环境
 source .venv/bin/activate
-
-# 安装 / 更新依赖
-echo "[2/4] 安装 Python 依赖（首次约 2~5 分钟）..."
-python -m pip install --quiet --upgrade pip
-pip install --quiet -r backend/requirements.txt
-pip install --quiet --no-deps -e backend/
-
-# 准备数据目录
-echo "[3/4] 准备数据目录..."
-mkdir -p data/chroma_cold
 
 # 设置环境变量（未设置时使用默认值）
 export CHROMA_COLD_PATH="${CHROMA_COLD_PATH:-${SCRIPT_DIR}/data/chroma_cold}"
@@ -146,7 +110,6 @@ PORT="${PORT:-8080}"
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 
-echo "[4/4] 启动 AIR_Memory 服务..."
 echo ""
 echo "=========================================="
 echo " AIR_Memory 启动成功！"
@@ -157,8 +120,8 @@ echo " 停止服务：按 Ctrl+C"
 echo "=========================================="
 echo ""
 
-# 启动 uvicorn
-exec uvicorn air_memory.main:app \
+# 使用 python -m uvicorn 避免依赖 PATH 中的 shebang 绝对路径
+exec python -m uvicorn air_memory.main:app \
     --host 127.0.0.1 \
     --port "$PORT" \
     --app-dir backend/src \

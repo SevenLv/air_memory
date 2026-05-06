@@ -8,6 +8,7 @@
 | 1.1 | 2026-4-10 | 重写：放弃 Docker，改为 Python 本机直接运行；FastAPI 统一承载 API 和前端静态文件；更新部署步骤、环境前提、自启动说明和常见问题排查 |
 | 1.2 | 2026-4-14 | 更新 Windows 启动成功 Banner 示例，补充"后端 API 文档"行 |
 | 1.3 | 2026-4-14 | 更新获取方式：改为从 GitHub Releases 下载发布包，不再需要通过 Git 克隆源代码；新增版本升级说明 |
+| 1.4 | 2026-5-6 | 部署分两步：新增 init.sh/init.bat 初始化脚本说明；简化 start.sh/start.bat 用途；新增可移植性说明 |
 
 ---
 
@@ -16,6 +17,8 @@
 本手册面向部署人员，提供在 macOS 和 Windows 操作系统上完成 AIR_Memory 系统部署的完整步骤说明。AIR_Memory 采用 Python 本机直接运行方案，用户仅需安装 **Python 3.11+** 即可完成部署，无需 Docker 或其他容器运行时。
 
 > **获取方式**：请从 [GitHub Releases 页面](https://github.com/SevenLv/air_memory/releases/latest)下载最新发布包（可执行程序），无需通过 Git 克隆源代码。
+
+**部署流程概览**：首次部署分两步执行——先运行初始化脚本（`init.sh` / `init.bat`）完成一次性环境配置，再运行启动脚本（`start.sh` / `start.bat`）启动服务。后续日常启动只需执行启动脚本。
 
 系统架构概览：
 
@@ -77,12 +80,12 @@ REM 应输出 Python 3.11.x 或更高版本
 
 ### 2.3 网络要求
 
-首次启动时，后端服务将从 HuggingFace Hub 自动下载 Embedding 模型（`all-MiniLM-L6-v2`，约 90 MB）并缓存至 `./models/` 目录。请确保部署机器在首次启动期间可以访问以下地址：
+运行初始化脚本（`init.sh` / `init.bat`）时，需从 HuggingFace Hub 下载 Embedding 模型（`all-MiniLM-L6-v2`，约 90 MB）并缓存至 `./models/` 目录。请确保执行初始化的机器在初始化期间可以访问以下地址：
 
 - `https://huggingface.co`
 - `https://cdn-lfs.huggingface.co`（模型文件 CDN）
 
-模型下载完成后将缓存在本地，后续重启无需再次联网。
+模型下载完成后将缓存在本地，后续启动（`start.sh` / `start.bat`）和目录迁移均无需再次联网。
 
 ---
 
@@ -114,34 +117,53 @@ python3 --version
 # 确认输出 Python 3.11.x 或更高版本
 ```
 
-#### 步骤二：运行一键启动脚本
+#### 步骤二：运行初始化脚本（首次部署执行一次）
 
 在项目根目录下打开终端，执行：
 
 ```bash
-bash start.sh
+bash init.sh
 ```
 
 脚本将依次执行以下操作：
 
 ```mermaid
 flowchart TD
-    A[启动 start.sh] --> B{检查 Python 3.11+}
+    A[运行 init.sh] --> B{检查 Python 3.11+}
     B -->|未安装或版本不满足| C[输出错误提示并退出]
     B -->|已安装| D{检查 .venv 是否存在}
-    D -->|不存在| E[python3 -m venv .venv 创建虚拟环境]
+    D -->|不存在| E[python3 -m venv --copies .venv]
     D -->|已存在| F[激活虚拟环境]
     E --> F
     F --> G[pip install 安装 Python 依赖]
-    G --> H[配置环境变量]
+    G --> H[预下载 Embedding 模型至 ./models/]
     H --> I[创建 data/ 目录]
-    I --> J[uvicorn 启动服务 :8080]
-    J --> K[输出访问地址]
+    I --> J[初始化完成]
 ```
 
-首次启动时，pip 安装依赖约需 2～5 分钟，模型下载约需 1～3 分钟（取决于网络速度），请耐心等待。
+首次初始化约需 3～8 分钟（依赖安装约 2～5 分钟，模型下载约 1～3 分钟）。
 
-#### 步骤三：确认启动成功
+> **可移植性说明**：`init.sh` 使用 `--copies` 模式创建虚拟环境（将 Python 二进制复制而非符号链接），并将模型缓存至项目目录 `./models/`。初始化完成后，整个项目目录可复制到相同 OS 和 CPU 架构的其他计算机上，执行 `bash start.sh` 即可直接启动，无需重新初始化。
+
+#### 步骤三：运行启动脚本
+
+```bash
+bash start.sh
+```
+
+脚本将激活虚拟环境并启动服务：
+
+```mermaid
+flowchart TD
+    A[运行 start.sh] --> B{检查 .venv 是否存在}
+    B -->|不存在| C[输出错误提示：请先运行 init.sh]
+    B -->|已存在| D[激活虚拟环境]
+    D --> E[配置环境变量]
+    E --> F[uvicorn 启动服务 :8080]
+    F --> G[输出访问地址]
+```
+
+#### 步骤四：确认启动成功
 
 脚本输出以下内容时表示部署成功：
 
@@ -168,19 +190,27 @@ python --version
 REM 确认输出 Python 3.11.x 或更高版本
 ```
 
-#### 步骤二：运行一键启动脚本
+#### 步骤二：运行初始化脚本（首次部署执行一次）
 
-在项目根目录下，双击 `start.bat` 文件，或在命令提示符（CMD）中执行：
+在项目根目录下，双击 `init.bat` 文件，或在命令提示符（CMD）中执行：
+
+```cmd
+init.bat
+```
+
+脚本将自动完成 Python 环境检查、虚拟环境创建、依赖安装和模型预下载，过程与 macOS 版本一致。
+
+首次初始化约需 3～8 分钟，完成后命令行窗口将显示初始化成功提示。
+
+#### 步骤三：运行启动脚本
+
+双击 `start.bat` 文件，或在命令提示符（CMD）中执行：
 
 ```cmd
 start.bat
 ```
 
-脚本将自动完成 Python 环境检查、虚拟环境创建、依赖安装和服务启动，过程与 macOS 版本一致。
-
-首次启动约需 3～8 分钟，完成后命令行窗口将显示访问地址。
-
-#### 步骤三：确认启动成功
+#### 步骤四：确认启动成功
 
 脚本输出以下内容时表示部署成功：
 

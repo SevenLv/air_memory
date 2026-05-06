@@ -1,11 +1,12 @@
 @echo off
 chcp 65001 >nul 2>&1
 REM ==============================================================================
-REM AIR_Memory 一键启动脚本 (Windows)
+REM AIR_Memory 启动脚本 (Windows)
 REM 用法: 双击运行 start.bat,或在命令提示符中执行
 REM   start.bat          正常启动
 REM   start.bat /install   安装 Task Scheduler 自启动(需管理员权限)
 REM   start.bat /uninstall 卸载 Task Scheduler 自启动(需管理员权限)
+REM 说明: 首次部署请先运行 init.bat 完成环境初始化,再使用本脚本启动服务.
 REM ==============================================================================
 
 setlocal enabledelayedexpansion
@@ -22,58 +23,19 @@ if /i "%1"=="/uninstall" goto :uninstall_task
 
 REM ---------- 正常启动 ----------
 echo ==========================================
-echo  AIR_Memory 一键启动 v1.2.12
+echo  AIR_Memory 启动 v1.3.0
 echo ==========================================
 
-REM 检查 Python 3.11+
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo [错误] 未检测到 Python,请先安装 Python 3.11+.
-    echo        下载地址: https://www.python.org/downloads/
-    pause
-    exit /b 1
-)
-
-REM 检查 Python 版本是否 >= 3.11
-python -c "import sys; exit(0 if sys.version_info >= (3,11) else 1)" >nul 2>&1
-if errorlevel 1 (
-    echo [错误] Python 版本不满足要求,请安装 Python 3.11+.
-    python --version
-    pause
-    exit /b 1
-)
-
-for /f "tokens=*" %%v in ('python --version') do set PYVER=%%v
-echo [检查] 使用 !PYVER!
-
-REM 创建虚拟环境(如不存在)
+REM 检查虚拟环境是否已初始化
 if not exist ".venv" (
-    echo [1/4] 创建 Python 虚拟环境...
-    python -m venv .venv
-    if errorlevel 1 (
-        echo [错误] 创建虚拟环境失败.
-        pause
-        exit /b 1
-    )
+    echo [错误] 未检测到 Python 虚拟环境^(.venv^),请先运行初始化脚本:
+    echo        init.bat
+    pause
+    exit /b 1
 )
 
 REM 激活虚拟环境
 call .venv\Scripts\activate.bat
-
-REM 安装/更新依赖
-echo [2/4] 安装 Python 依赖^(首次约 2^~5 分钟^)...
-python -m pip install --quiet --upgrade pip
-pip install --quiet -r backend\requirements.txt
-if errorlevel 1 (
-    echo [错误] 依赖安装失败,请检查网络连接后重试.
-    pause
-    exit /b 1
-)
-pip install --quiet --no-deps -e backend\
-
-REM 准备数据目录
-echo [3/4] 准备数据目录...
-if not exist "data\chroma_cold" mkdir "data\chroma_cold"
 
 REM 设置环境变量(未设置时使用默认值)
 if not defined CHROMA_COLD_PATH set "CHROMA_COLD_PATH=!SCRIPT_DIR!\data\chroma_cold"
@@ -103,7 +65,6 @@ REM 注意：此处强制覆盖（不使用 if not defined），防止系统/用
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 
-echo [4/4] 启动 AIR_Memory 服务...
 echo.
 echo ==========================================
 echo  AIR_Memory 启动成功!
@@ -114,7 +75,8 @@ echo  停止服务: 关闭此窗口或按 Ctrl+C
 echo ==========================================
 echo.
 
-uvicorn air_memory.main:app --host 127.0.0.1 --port !PORT! --app-dir backend\src --no-access-log --log-level warning
+REM 使用 python -m uvicorn 避免依赖 PATH 中的 shebang 绝对路径
+python -m uvicorn air_memory.main:app --host 127.0.0.1 --port !PORT! --app-dir backend\src --no-access-log --log-level warning
 goto :eof
 
 REM ---------- 安装 Task Scheduler 自启动 ----------

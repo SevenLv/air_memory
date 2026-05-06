@@ -28,7 +28,7 @@ jobs:
           mkdir -p "${PKG_DIR}/frontend"
 
           # 复制根目录文件
-          cp README.md start.sh start.bat "${PKG_DIR}/"
+          cp README.md start.sh start.bat init.sh init.bat "${PKG_DIR}/"
 
           # 复制文档目录
           cp -r doc "${PKG_DIR}/"
@@ -51,7 +51,7 @@ jobs:
         run: |
           gh release create "${{ github.event.inputs.tag }}" \
             --title "AIR_Memory ${{ github.event.inputs.tag }}" \
-            --notes-file doc/release_notes_v1.2.12.md \
+            --notes-file doc/release_notes_v1.3.0.md \
             "${PKG_NAME}.zip" \
             doc/deploy_guide.md \
             doc/user_guide.md
