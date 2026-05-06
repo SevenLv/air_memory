@@ -23,12 +23,20 @@ if /i "%1"=="/uninstall" goto :uninstall_task
 
 REM ---------- 正常启动 ----------
 echo ==========================================
-echo  AIR_Memory 启动 v1.3.0
+echo  AIR_Memory 启动 v1.3.1
 echo ==========================================
 
 REM 检查虚拟环境是否已初始化
 if not exist ".venv" (
     echo [错误] 未检测到 Python 虚拟环境^(.venv^),请先运行初始化脚本:
+    echo        init.bat
+    pause
+    exit /b 1
+)
+
+REM 检查 Embedding 模型是否已预下载
+if not exist "models\hub" (
+    echo [错误] 未检测到已预下载的 Embedding 模型,请先运行初始化脚本:
     echo        init.bat
     pause
     exit /b 1
@@ -41,7 +49,10 @@ REM 设置环境变量(未设置时使用默认值)
 if not defined CHROMA_COLD_PATH set "CHROMA_COLD_PATH=!SCRIPT_DIR!\data\chroma_cold"
 if not defined DB_PATH set "DB_PATH=!SCRIPT_DIR!\data\logs.db"
 if not defined STATIC_DIR set "STATIC_DIR=!SCRIPT_DIR!\frontend\dist"
-if not defined HF_HOME set "HF_HOME=!SCRIPT_DIR!\models"
+REM 强制覆盖 HF_HOME（不使用 if not defined），确保始终指向项目内 models\ 目录
+REM init.bat 将模型缓存到此目录；若此处改为条件赋值，当系统/用户已设置 HF_HOME 指向其他路径时
+REM start.bat 会在错误位置查找模型，导致重新下载
+set "HF_HOME=!SCRIPT_DIR!\models"
 if not defined EMBEDDING_MODEL set "EMBEDDING_MODEL=all-MiniLM-L6-v2"
 if not defined HOT_MEMORY_BUDGET_MB set "HOT_MEMORY_BUDGET_MB=6144"
 if not defined DISK_TRIGGER_GB set "DISK_TRIGGER_GB=38"

@@ -71,12 +71,19 @@ fi
 
 # ---------- 正常启动 ----------
 echo "=========================================="
-echo " AIR_Memory 启动 v1.3.0"
+echo " AIR_Memory 启动 v1.3.1"
 echo "=========================================="
 
 # 检查虚拟环境是否已初始化
 if [ ! -d ".venv" ]; then
     echo "[错误] 未检测到 Python 虚拟环境（.venv），请先运行初始化脚本："
+    echo "       bash init.sh"
+    exit 1
+fi
+
+# 检查 Embedding 模型是否已预下载
+if [ ! -d "models/hub" ]; then
+    echo "[错误] 未检测到已预下载的 Embedding 模型，请先运行初始化脚本："
     echo "       bash init.sh"
     exit 1
 fi
@@ -88,7 +95,10 @@ source .venv/bin/activate
 export CHROMA_COLD_PATH="${CHROMA_COLD_PATH:-${SCRIPT_DIR}/data/chroma_cold}"
 export DB_PATH="${DB_PATH:-${SCRIPT_DIR}/data/logs.db}"
 export STATIC_DIR="${STATIC_DIR:-${SCRIPT_DIR}/frontend/dist}"
-export HF_HOME="${HF_HOME:-${SCRIPT_DIR}/models}"
+# 强制覆盖 HF_HOME（不使用 ${:-} 默认值），确保始终指向项目内 models/ 目录
+# init.sh 将模型缓存到此目录；若此处改为条件赋值，当系统/用户已设置 HF_HOME 指向其他路径时
+# start.sh 会在错误位置查找模型，导致重新下载
+export HF_HOME="${SCRIPT_DIR}/models"
 export EMBEDDING_MODEL="${EMBEDDING_MODEL:-all-MiniLM-L6-v2}"
 export HOT_MEMORY_BUDGET_MB="${HOT_MEMORY_BUDGET_MB:-6144}"
 export DISK_TRIGGER_GB="${DISK_TRIGGER_GB:-38}"
