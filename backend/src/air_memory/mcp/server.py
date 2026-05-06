@@ -68,14 +68,14 @@ async def save_memory(content: str) -> str:
 async def query_memory(
     query: str,
     top_k: int = 5,
-    fast_only: bool = False,
+    fast_only: bool = True,
 ) -> str:
     """查询相关记忆。
 
     Args:
         query: 查询文本。
         top_k: 返回最相关记忆的数量，默认 5。
-        fast_only: 为 True 时仅检索热层（≤ 100ms），为 False 时同时检索热层和冷层。
+        fast_only: 为 True 时仅检索热层（≤ 100ms），默认 True；为 False 时同时检索热层和冷层。
 
     Returns:
         JSON 字符串，包含记忆条目列表。示例结构：
