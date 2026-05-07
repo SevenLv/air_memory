@@ -53,6 +53,16 @@ REM 强制覆盖 HF_HOME（不使用 if not defined），确保始终指向项�
 REM init.bat 将模型缓存到此目录；若此处改为条件赋值，当系统/用户已设置 HF_HOME 指向其他路径时
 REM start.bat 会在错误位置查找模型，导致重新下载
 set "HF_HOME=!SCRIPT_DIR!\models"
+REM 强制覆盖 HF_HUB_CACHE（不使用 if not defined）
+REM huggingface_hub 解析顺序：HF_HUB_CACHE > HUGGINGFACE_HUB_CACHE > HF_HOME/hub
+REM 若用户系统已设置 HF_HUB_CACHE 指向其他路径，仅设置 HF_HOME 并不能覆盖实际缓存位置
+REM 因此必须同时强制覆盖 HF_HUB_CACHE，确保模型缓存与 init.bat 预下载位置一致
+set "HF_HUB_CACHE=!SCRIPT_DIR!\models\hub"
+REM 强制启用离线模式（不使用 if not defined），防止 sentence_transformers/huggingface_hub 在启动时
+REM 向 HuggingFace Hub 发起网络请求（即便模型已缓存，默认行为仍会进行版本更新检查并可能重新下载）
+REM init.bat 负责预下载模型；start.bat 只使用本地缓存，无需联网
+set "HF_HUB_OFFLINE=1"
+set "TRANSFORMERS_OFFLINE=1"
 if not defined EMBEDDING_MODEL set "EMBEDDING_MODEL=all-MiniLM-L6-v2"
 if not defined HOT_MEMORY_BUDGET_MB set "HOT_MEMORY_BUDGET_MB=6144"
 if not defined DISK_TRIGGER_GB set "DISK_TRIGGER_GB=38"

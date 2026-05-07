@@ -99,6 +99,16 @@ export STATIC_DIR="${STATIC_DIR:-${SCRIPT_DIR}/frontend/dist}"
 # init.sh 将模型缓存到此目录；若此处改为条件赋值，当系统/用户已设置 HF_HOME 指向其他路径时
 # start.sh 会在错误位置查找模型，导致重新下载
 export HF_HOME="${SCRIPT_DIR}/models"
+# 强制覆盖 HF_HUB_CACHE（不使用 ${:-} 默认值）
+# huggingface_hub 解析顺序：HF_HUB_CACHE > HUGGINGFACE_HUB_CACHE > HF_HOME/hub
+# 若用户系统已设置 HF_HUB_CACHE 指向其他路径，仅设置 HF_HOME 并不能覆盖实际缓存位置
+# 因此必须同时强制覆盖 HF_HUB_CACHE，确保模型缓存与 init.sh 预下载位置一致
+export HF_HUB_CACHE="${SCRIPT_DIR}/models/hub"
+# 强制启用离线模式（不使用 ${:-} 默认值），防止 sentence_transformers/huggingface_hub 在启动时
+# 向 HuggingFace Hub 发起网络请求（即便模型已缓存，默认行为仍会进行版本更新检查并可能重新下载）
+# init.sh 负责预下载模型；start.sh 只使用本地缓存，无需联网
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
 export EMBEDDING_MODEL="${EMBEDDING_MODEL:-all-MiniLM-L6-v2}"
 export HOT_MEMORY_BUDGET_MB="${HOT_MEMORY_BUDGET_MB:-6144}"
 export DISK_TRIGGER_GB="${DISK_TRIGGER_GB:-38}"
