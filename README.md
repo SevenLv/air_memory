@@ -41,7 +41,7 @@ start.bat
 
 启动成功后访问 `http://localhost:8080` 即可使用 Web 管理界面。
 
-详细部署说明请参阅 `doc/deploy_guide_v1.1.md`, 使用说明请参阅 `doc/user_guide_v2.0.md`。
+详细部署说明请参阅 `doc/deploy_guide_v1.1.md`, 使用说明请参阅 `doc/user_guide_v2.1.md`。
 
 ---
 
@@ -75,13 +75,13 @@ graph LR
     FRONTEND --> FE_DIST["dist/（预构建静态文件）"]
     FRONTEND --> FE_TESTS["tests/（Vitest 单元测试）"]
 
-    DOC --> D1["pdd_v1.5.md（产品定义）"]
-    DOC --> D2["sad_v1.14.md（系统架构设计）"]
+    DOC --> D1["pdd_v1.6.md（产品定义）"]
+    DOC --> D2["sad_v1.15.md（系统架构设计）"]
     DOC --> D3["tsr_v1.3.md（技术路线选型）"]
     DOC --> D4["tbp_v1.1.md（团队建设计划）"]
-    DOC --> D5["srd_v1.2.md（系统需求定义）"]
+    DOC --> D5["srd_v1.3.md（系统需求定义）"]
     DOC --> D6["deploy_guide_v1.1.md（部署手册）"]
-    DOC --> D7["user_guide_v2.0.md（用户手册）"]
+    DOC --> D7["user_guide_v2.1.md（用户手册）"]
     DOC --> D8["release_notes_v1.2.12.md（发布说明）"]
 ```
 
