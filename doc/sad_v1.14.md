@@ -268,7 +268,7 @@ graph LR
     - 向 `feedback_logs` 表写入本次反馈记录（input_id, memory_id, valuable, created_at）
   - 层间迁移触发逻辑：根据 `total_association_score` 在所有记忆中的排名决定是否需要升入热层或降至冷层，系统维护热层容量限制
   - `get_feedback_logs(memory_id: str) -> list`：查询指定记忆的反馈历史
-  - `get_memory_total_association_score(memory_id: str) -> float`：内部方法，计算指定记忆当前关联评分总量（通过 LEFT JOIN + COALESCE(SUM,0) 计算），供层迁移判断使用，不对外暴露独立 API
+  - `_get_memory_total_association_score(memory_id: str) -> float`：内部方法，计算指定记忆当前关联评分总量（通过 LEFT JOIN + COALESCE(SUM,0) 计算），供层迁移判断使用，不对外暴露独立 API
   - `get_all_feedback_logs(page, page_size, memory_id?, start_time?, end_time?) -> (list, int)`：全局反馈记录查询，支持按 `memory_id`、`start_time`/`end_time` 过滤和分页，返回当前页记录列表和符合条件的总条数
   - `list_inputs(page, page_size, start_time?, end_time?) -> (list, int)`：输入信息列表查询
   - `get_input_detail(input_id: str) -> InputDetail`：查询输入信息详情及其关联记忆评分
