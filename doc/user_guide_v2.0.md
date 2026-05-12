@@ -14,7 +14,7 @@
 | 1.7 | 2026-4-15 | 2.3 节补充记忆列表操作能力：操作列增加删除按钮、列表过滤已删除数据、新增评价值列展示 |
 | 1.8 | 2026-4-15 | 2.4 节补充操作日志时间范围筛选与分页；2.3 节补充记忆列表评价值分级背景色说明 |
 | 1.9 | 2026-4-16 | 3.2 节更新 REST API Content-Type 说明：v1.2.12 起服务端自动按 UTF-8 处理，客户端无需显式设置 charset |
-| 2.0 | 2026-5-11 | 新增输入信息管理列表与详情页使用说明；更新查询接口返回 input_id 与固定配额规则；更新反馈接口参数为 input_id + memory_id + valuable；补充输入信息 REST API 与 MCP 调用示例；移除 fast_only 参数，查询接口统一执行分层配额检索；移除查询模式切换步骤及 query_mode 返回字段；更新日志表、MCP 工具签名与 REST API 示例；查询配额改为溢出填充模式；新增版本数据兼容性说明 |
+| 2.0 | 2026-5-11 | 新增输入信息管理列表与详情页使用说明；更新查询接口返回 input_id 与固定配额规则；更新反馈接口参数为 input_id + memory_id + valuable；补充输入信息 REST API 与 MCP 调用示例；移除 fast_only 参数，查询接口统一执行分层配额检索；移除查询模式切换步骤及 query_mode 返回字段；更新日志表、MCP 工具签名与 REST API 示例；查询配额改为溢出填充模式；新增版本数据兼容性说明；更新反馈记录页面描述为关联反馈模型；删除关联评分总量面板 |
 
 ---
 
@@ -22,7 +22,7 @@
 
 本手册面向两类读者：
 
-- **人类用户**：通过 Web 管理界面对记忆数据进行查询、删除、日志查看、关联评分总量查看和输入信息管理。
+- **人类用户**：通过 Web 管理界面对记忆数据进行查询、删除、日志查看、关联反馈记录查看和输入信息管理。
 - **AI Agent 集成方**：通过 MCP 协议或 REST API 将 AIR_Memory 集成至 AI Agent 工作流。
 
 系统部署完成后，Web 管理界面访问地址为 `http://localhost:8080`。
@@ -40,7 +40,7 @@ graph LR
     Nav["顶部导航栏"] --> Home["首页 / - 记忆查询"]
     Nav --> Memories["/memories - 记忆管理"]
     Nav --> Logs["/logs - 操作日志"]
-    Nav --> Feedback["/feedback - 关联评分总量"]
+    Nav --> Feedback["/feedback - 关联反馈记录"]
     Nav --> Inputs["/inputs - 输入信息管理"]
 ```
 
@@ -118,8 +118,7 @@ sequenceDiagram
     前端-->>用户: 展示筛选后的分页结果（每页20条）
     用户->>前端: 点击"查看详情"
     前端->>后端API: GET /api/v1/logs/save/{memory_id}
-    前端->>后端API: GET /api/v1/memories/{memory_id}/total-association-score
-    后端API-->>前端: 记忆详情 + 关联评分总量
+    后端API-->>前端: 记忆详情
     前端-->>用户: 展示完整记忆字段
 ```
 
@@ -156,9 +155,9 @@ sequenceDiagram
 | `result_count` | 返回记忆条目数 |
 | `created_at` | 查询操作发生时间 |
 
-### 2.5 反馈记录查询（`/feedback`）
+### 2.5 关联反馈记录查询（`/feedback`）
 
-反馈记录页面用于查询 AI Agent 历次提交的价值反馈，支持按记忆 ID 和时间段筛选，并以分页列表展示结果。当指定记忆 ID 时，还会同时显示该记忆的当前关联评分总量和所在层。
+反馈记录页面用于查询 AI Agent 历次通过反馈接口提交的 input_id + memory_id 关联反馈记录，支持按记忆 ID、输入信息 ID 和时间段筛选，并以分页列表展示结果。
 
 **查询操作**：
 
@@ -166,12 +165,14 @@ sequenceDiagram
 2. 在"时间范围"选择器中选择开始时间和结束时间（可选）。
 3. 点击"查询"按钮发起查询，或点击"重置"清空所有条件恢复初始状态。
 
-**关联评分总量面板**（仅在指定记忆 ID 时显示）：
+**反馈记录字段说明**：
 
 | 字段 | 说明 |
 | --- | --- |
-| `total_association_score` | 当前关联评分总量（所有相关输入信息 association_score 之和） |
-| `tier` | 当前所在层：`hot` 或 `cold` |
+| `created_at` | 反馈发生的时间戳 |
+| `input_id` | 触发本次反馈的输入信息 ID |
+| `memory_id` | 被评价的记忆 ID |
+| `valuable` | true 表示关联分增加，false 表示关联分降低 |
 
 **层管理规则说明**：
 
@@ -187,9 +188,10 @@ sequenceDiagram
 
 | 字段 | 说明 |
 | --- | --- |
-| `memory_id` | 被评价记忆的唯一标识 |
-| `valuable` | 反馈类型：`true`（有价值）或 `false`（无价值） |
 | `created_at` | 反馈提交时间 |
+| `input_id` | 触发本次反馈的输入信息 ID |
+| `memory_id` | 被评价记忆的唯一标识 |
+| `valuable` | 反馈方向：`true`（关联分增加）或 `false`（关联分降低） |
 
 每页默认显示 20 条，可通过分页控件切换页码或调整每页条数（10 / 20 / 50 / 100）。
 
@@ -500,22 +502,6 @@ GET /api/v1/memories/{memory_id}/feedback/logs?page=1&page_size=20
 ```
 
 ---
-
-**查询关联评分总量**
-
-```
-GET /api/v1/memories/{memory_id}/total-association-score
-```
-
-响应（HTTP 200）：
-
-```json
-{
-  "memory_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "total_association_score": 0.0,
-  "tier": "hot"
-}
-```
 
 #### 3.2.3 日志接口
 

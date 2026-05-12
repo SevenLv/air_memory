@@ -18,7 +18,7 @@
 | 1.11 | 2026-4-10 | 放弃 Docker 部署方案，改为 Python 本机直接运行；FastAPI 统一承载后端 API 与前端静态文件服务；前端预构建产物 dist/ 随仓库分发；自启动由 macOS LaunchAgent / Windows Task Scheduler 替代 Docker restart policy；更新技术栈、部署架构、性能预算、研发计划及需求分配章节 |
 | 1.12 | 2026-4-14 | 新增全局反馈记录列表 API（`GET /api/v1/logs/feedback`，支持 memory_id/时间范围过滤和分页）；新增 `FeedbackLogsWithTotalResponse` 数据模型；补充 `FeedbackService.get_all_feedback_logs()` 方法；`main.py` 启动时对 12 个第三方库子 logger 设置 WARNING 级别（抑制 Windows 日志噪声）；前端 LogsView 新增乱码检测徽章；参考文档更新：PDD v1.3→v1.4，SRD v1.0→v1.1 |
 | 1.13 | 2026-4-15 | 新增 `_ForceUTF8JSONMiddleware` 纯 ASGI 中间件，强制所有 `application/json` 请求的 Content-Type charset 覆写为 `utf-8`，修复 AI 工具调用框架不设置或错误设置 charset 导致中文乱码的问题；更新接口规范说明，移除客户端强制设置 charset 的要求；安全设计章节补充 UTF-8 强制中间件说明 |
-| 1.14 | 2026-5-11 | 新增输入信息关联架构: 查询接口返回 input_id 并采用关联5+热3+冷2配额, 反馈接口新增 input_id 参数并维护输入信息-记忆关联评分, Web UI 新增输入信息列表与详情页, 补充输入信息数据模型与接口规范；移除 fast_only 参数，查询接口统一执行分层配额检索；查询配额改为溢出填充模式；新增 DataMigrationManager 组件与数据升级启动流程 |
+| 1.14 | 2026-5-11 | 新增输入信息关联架构: 查询接口返回 input_id 并采用关联5+热3+冷2配额, 反馈接口新增 input_id 参数并维护输入信息-记忆关联评分, Web UI 新增输入信息列表与详情页, 补充输入信息数据模型与接口规范；移除 fast_only 参数，查询接口统一执行分层配额检索；查询配额改为溢出填充模式；新增 DataMigrationManager 组件与数据升级启动流程；更新 FeedbackView 为关联反馈模型；删除独立关联评分总量 API；明确删除记忆级联范围 |
 
 ---
 
@@ -40,7 +40,7 @@
 
 AIR_Memory 是一个为 AI Agent 设计的本地部署记忆系统。AI Agent 可通过 AIR_Memory 高效地存储记忆、查询相关记忆，并能对查询结果的价值进行反馈评价。
 
-系统通过分级存储架构（热层/冷层），在 8GB 内存上限和 40GB 磁盘上限约束下最大化高关联评分总量记忆的检索性能。查询接口会为每次输入生成 `input_id` 并按"关联记忆优先 + 热层匹配 + 冷层匹配"溢出填充策略（关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10）返回最多 10 条结果，反馈接口基于 `input_id` 维护输入信息与记忆关联评分。磁盘空间触及上限时系统会自动淘汰关联评分总量最低的最旧数据（创建时间在 168 小时内的记忆受保护不得淘汰）。系统同时向人类提供 Web 管理界面进行记忆查询、删除、日志查看、关联评分总量查询和输入信息管理。
+系统通过分级存储架构（热层/冷层），在 8GB 内存上限和 40GB 磁盘上限约束下最大化高关联评分总量记忆的检索性能。查询接口会为每次输入生成 `input_id` 并按"关联记忆优先 + 热层匹配 + 冷层匹配"溢出填充策略（关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10）返回最多 10 条结果，反馈接口基于 `input_id` 维护输入信息与记忆关联评分。磁盘空间触及上限时系统会自动淘汰关联评分总量最低的最旧数据（创建时间在 168 小时内的记忆受保护不得淘汰）。系统同时向人类提供 Web 管理界面进行记忆查询、删除、日志查看、关联反馈记录查看和输入信息管理。
 
 ### 1.4 术语定义
 
@@ -268,7 +268,7 @@ graph LR
     - 向 `feedback_logs` 表写入本次反馈记录（input_id, memory_id, valuable, created_at）
   - 层间迁移触发逻辑：根据 `total_association_score` 在所有记忆中的排名决定是否需要升入热层或降至冷层，系统维护热层容量限制
   - `get_feedback_logs(memory_id: str) -> list`：查询指定记忆的反馈历史
-  - `get_memory_total_association_score(memory_id: str) -> float`：查询指定记忆当前关联评分总量（通过 LEFT JOIN + COALESCE(SUM,0) 计算）
+  - `get_total_association_score(memory_id: str) -> float`：内部方法，计算指定记忆当前关联评分总量（通过 LEFT JOIN + COALESCE(SUM,0) 计算），供层迁移判断使用，不对外暴露独立 API
   - `get_all_feedback_logs(page, page_size, memory_id?, start_time?, end_time?) -> (list, int)`：全局反馈记录查询，支持按 `memory_id`、`start_time`/`end_time` 过滤和分页，返回当前页记录列表和符合条件的总条数
   - `list_inputs(page, page_size, start_time?, end_time?) -> (list, int)`：输入信息列表查询
   - `get_input_detail(input_id: str) -> InputDetail`：查询输入信息详情及其关联记忆评分
@@ -349,8 +349,8 @@ graph LR
 - `MemoriesView.vue`（待实现）：记忆列表和删除功能
 - `LogsView.vue`（待实现）：操作日志查看功能
 - `FeedbackView.vue`（待实现）：
-  - 显示每个记忆的当前关联评分总量（`total_association_score`）和所在层（hot/cold）
-  - 显示指定记忆的每次反馈记录列表（时间、有价值/无价值）
+  - 显示历次关联反馈记录列表（input_id、memory_id、valuable、created_at）
+  - 支持按 memory_id 或 input_id 过滤，支持时间段筛选和分页
 - `InputsView.vue`（待实现）：输入信息管理列表，支持分页、时间筛选和跳转详情
 - `InputDetailView.vue`（待实现）：展示输入信息关联记忆列表及关联评分
 
@@ -481,13 +481,12 @@ flowchart LR
     Browser --> LS["GET /api/v1/logs/save<br/>查看存储日志"]
     Browser --> LQ["GET /api/v1/logs/query<br/>查看查询日志"]
     Browser --> FL["GET /api/v1/memories/{id}/feedback/logs<br/>查看反馈历史"]
-    Browser --> VS["GET /api/v1/memories/{id}/total-association-score<br/>查看关联评分总量"]
     Browser --> IL["GET /api/v1/inputs<br/>查看输入信息列表"]
     Browser --> ID["GET /api/v1/inputs/{input_id}<br/>查看输入信息详情"]
     Browser --> TS["GET /api/v1/admin/tier-stats<br/>热/冷层统计"]
     Browser --> DS["GET /api/v1/admin/disk-stats<br/>磁盘占用统计"]
 
-    Q & D & LS & LQ & FL & VS & IL & ID & TS & DS --> Backend["FastAPI REST API<br/>MemoryService / LogService<br/>FeedbackService / DiskManager"]
+    Q & D & LS & LQ & FL & IL & ID & TS & DS --> Backend["FastAPI REST API<br/>MemoryService / LogService<br/>FeedbackService / DiskManager"]
 ```
 
 ---
@@ -528,7 +527,6 @@ flowchart LR
 | DELETE | `/memories/{id}` | 删除记忆 | - | `{"message": "ok"}` |
 | POST | `/memories/{id}/feedback` | 提交记忆价值反馈 | `{"input_id":"string","valuable": true\|false}` | `{"memory_id": "string", "message": "ok"}` |
 | GET | `/memories/{id}/feedback/logs` | 查询指定记忆的反馈历史 | Query: `page=1`, `page_size=20` | `{"logs": [...], "count": N}` |
-| GET | `/memories/{id}/total-association-score` | 查询指定记忆当前关联评分总量 | - | `{"memory_id": "string", "total_association_score": 0.0, "tier": "hot"\|"cold"}` |
 | GET | `/inputs` | 查询输入信息列表 | Query: `page=1`, `page_size=20`, `start_time?`, `end_time?` | `{"inputs":[...], "count": N, "total": N}` |
 | GET | `/inputs/{input_id}` | 查询输入信息详情 | - | `{"input_id":"string","query":"string","created_at":"...","memories":[...]}` |
 
@@ -966,7 +964,7 @@ graph LR
 | --- | --- | --- | --- |
 | M2-01 | 实现 `MemoriesView`：记忆查询（统一执行分层配额检索）与指定记忆删除 | Mia | FR-UI-001, FR-UI-002 |
 | M2-02 | 实现 `LogsView`：存储操作日志查看（时间、原始内容）与查询操作日志查看（时间、条件、模式、结果） | Mia | FR-UI-003, FR-UI-004 |
-| M2-03 | 实现 `FeedbackView`：查看每个记忆的当前综合价值评分与历次反馈记录 | Mia | FR-UI-005, FR-UI-006 |
+| M2-03 | 实现 `FeedbackView`：查看历次关联反馈记录，支持按 memory_id/input_id 和时间段筛选，分页展示 | Mia | FR-UI-005 |
 | M2-04 | 实现 `InputsView` 与 `InputDetailView`：输入信息列表、详情及关联记忆评分展示 | Mia | FR-UI-007, FR-UI-008 |
 | M2-05 | 实现分级存储统计面板（热/冷层记忆数量、内存占用、磁盘占用） | Mia | PR-004, PR-005 |
 | M2-06 | 实现 Pinia Store（`useMemoryStore`、`useLogStore`、`useInputStore`）和 Axios API 调用层 | Mia | - |
@@ -981,7 +979,7 @@ graph LR
 | M2-AC-02 | 记忆查询页面能正确展示查询结果，展示分层配额来源（满足 FR-UI-001） |
 | M2-AC-03 | 点击删除按钮后，目标记忆从列表中消失，且后端已确认删除（满足 FR-UI-002） |
 | M2-AC-04 | 存储操作日志页面和查询操作日志页面能正确展示各自的日志列表（满足 FR-UI-003, FR-UI-004） |
-| M2-AC-05 | 反馈记录页面能正确展示指定记忆的 total_association_score、所在层及历次反馈历史（满足 FR-UI-005, FR-UI-006） |
+| M2-AC-05 | 反馈记录页面能正确展示历次关联反馈记录（input_id、memory_id、valuable、created_at）及按 memory_id/input_id 筛选功能（满足 FR-UI-005） |
 | M2-AC-06 | 输入信息列表与详情页面能正确展示输入记录、关联记忆及关联评分（满足 FR-UI-007, FR-UI-008） |
 | M2-AC-07 | 分级存储统计面板能正确展示热/冷层数量、内存占用和磁盘占用数据 |
 | M2-AC-08 | 所有与后端的 API 调用均使用统一 Axios 实例，错误状态（4xx/5xx）有明确的界面提示 |
@@ -1155,8 +1153,7 @@ graph LR
 | FR-UI-002 | 记忆数据删除 | Vue.js 3 前端 + REST API | `frontend/src/views/MemoriesView.vue`、`DELETE /api/v1/memories/{id}` |
 | FR-UI-003 | 存储操作日志查看 | Vue.js 3 前端 + LogService + REST API | `frontend/src/views/LogsView.vue`、`GET /api/v1/logs/save`、`log/service.py` |
 | FR-UI-004 | 查询操作日志查看 | Vue.js 3 前端 + LogService + REST API | `frontend/src/views/LogsView.vue`、`GET /api/v1/logs/query`、`log/service.py` |
-| FR-UI-005 | 价值反馈记录查看 | Vue.js 3 前端 + FeedbackService + REST API | `frontend/src/views/FeedbackView.vue`、`GET /api/v1/memories/{id}/feedback/logs`、`feedback/service.py`（`get_feedback_logs()`）；全局反馈记录列表：`GET /api/v1/logs/feedback`（`api/logs.py`）、`feedback/service.py`（`get_all_feedback_logs()`）|
-| FR-UI-006 | 关联评分总量查看 | Vue.js 3 前端 + FeedbackService + REST API | `frontend/src/views/FeedbackView.vue`、`GET /api/v1/memories/{id}/total-association-score`、`feedback/service.py`（`get_memory_total_association_score()`）|
+| FR-UI-005 | 关联反馈记录查看 | Vue.js 3 前端 + FeedbackService + REST API | `frontend/src/views/FeedbackView.vue`、`GET /api/v1/memories/{id}/feedback/logs`、`feedback/service.py`（`get_feedback_logs()`）；全局反馈记录列表：`GET /api/v1/logs/feedback`（`api/logs.py`）、`feedback/service.py`（`get_all_feedback_logs()`）|
 | FR-UI-007 | 输入信息管理列表 | Vue.js 3 前端 + FeedbackService + REST API | `frontend/src/views/InputsView.vue`、`GET /api/v1/inputs`、`feedback/service.py`（`list_inputs()`） |
 | FR-UI-008 | 输入信息详情查看 | Vue.js 3 前端 + FeedbackService + REST API | `frontend/src/views/InputDetailView.vue`、`GET /api/v1/inputs/{input_id}`、`feedback/service.py`（`get_input_detail()`） |
 
