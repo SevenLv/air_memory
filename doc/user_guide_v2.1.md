@@ -14,8 +14,7 @@
 | 1.7 | 2026-4-15 | 2.3 节补充记忆列表操作能力：操作列增加删除按钮、列表过滤已删除数据、新增评价值列展示 |
 | 1.8 | 2026-4-15 | 2.4 节补充操作日志时间范围筛选与分页；2.3 节补充记忆列表评价值分级背景色说明 |
 | 1.9 | 2026-4-16 | 3.2 节更新 REST API Content-Type 说明：v1.2.12 起服务端自动按 UTF-8 处理，客户端无需显式设置 charset |
-| 2.0 | 2026-5-11 | 新增输入信息管理列表与详情页使用说明；更新查询接口返回 input_id 与固定配额规则；更新反馈接口参数为 input_id + memory_id + valuable；补充输入信息 REST API 与 MCP 调用示例 |
-| 2.1 | 2026-5-11 | 移除 fast_only 参数，查询接口统一执行分层配额检索；移除查询模式切换步骤及 query_mode 返回字段；更新日志表、MCP 工具签名与 REST API 示例 |
+| 2.0 | 2026-5-11 | 新增输入信息管理列表与详情页使用说明；更新查询接口返回 input_id 与固定配额规则；更新反馈接口参数为 input_id + memory_id + valuable；补充输入信息 REST API 与 MCP 调用示例；移除 fast_only 参数，查询接口统一执行分层配额检索；移除查询模式切换步骤及 query_mode 返回字段；更新日志表、MCP 工具签名与 REST API 示例 |
 
 ---
 
@@ -23,7 +22,7 @@
 
 本手册面向两类读者：
 
-- **人类用户**：通过 Web 管理界面对记忆数据进行查询、删除、日志查看、价值评分查看和输入信息管理。
+- **人类用户**：通过 Web 管理界面对记忆数据进行查询、删除、日志查看、关联评分总量查看和输入信息管理。
 - **AI Agent 集成方**：通过 MCP 协议或 REST API 将 AIR_Memory 集成至 AI Agent 工作流。
 
 系统部署完成后，Web 管理界面访问地址为 `http://localhost:8080`。
@@ -41,7 +40,7 @@ graph LR
     Nav["顶部导航栏"] --> Home["首页 / - 记忆查询"]
     Nav --> Memories["/memories - 记忆管理"]
     Nav --> Logs["/logs - 操作日志"]
-    Nav --> Feedback["/feedback - 价值评分"]
+    Nav --> Feedback["/feedback - 关联评分总量"]
     Nav --> Inputs["/inputs - 输入信息管理"]
 ```
 
@@ -64,7 +63,7 @@ graph LR
 | `input_id` | 本次查询输入信息 ID, 用于后续反馈接口 |
 | `content` | 记忆原文内容 |
 | `similarity` | 与查询内容的语义相似度（0.0 至 1.0，越高越相关） |
-| `value_score` | 当前综合价值评分（0.0 至 1.0） |
+| `total_association_score` | 该记忆当前关联评分总量（input_memory_links 中 association_score 之和） |
 | `association_score` | 当前输入信息与该记忆的关联评分 |
 | `source` | 结果来源: `associated`/`hot`/`cold` |
 | `tier` | 所在层：`hot`（热层）或 `cold`（冷层） |
@@ -81,9 +80,9 @@ graph LR
 1. 进入页面后系统自动加载最近记忆列表。
 2. 列表按提交时间倒序展示（最新记录优先）。
 3. 列表中会隐藏已删除记忆，仅展示有效记忆。
-4. 列表提供评价值列，显示该记忆当前价值评分（保留两位小数）。
+4. 列表提供关联评分总量列，显示该记忆当前的 total_association_score（保留两位小数）。
 5. 分页固定每页 20 条，可通过分页器切换页码。
-6. 列表按评价值应用分级背景色（高分绿色、中分橙色、低分红色），鼠标悬停时会显示同色系加深高亮，兼顾可读性与 hover 反馈。
+6. 列表按关联评分总量应用分级背景色（高分绿色、中分橙色、低分红色），鼠标悬停时会显示同色系加深高亮，兼顾可读性与 hover 反馈。
 
 **按条件查询**：
 
@@ -99,7 +98,7 @@ graph LR
    - ID
    - 原始数据
    - 提交时间
-   - 价值评分
+   - 关联评分总量（total_association_score）
 
 **删除记忆**：
 
@@ -119,8 +118,8 @@ sequenceDiagram
     前端-->>用户: 展示筛选后的分页结果（每页20条）
     用户->>前端: 点击"查看详情"
     前端->>后端API: GET /api/v1/logs/save/{memory_id}
-    前端->>后端API: GET /api/v1/memories/{memory_id}/value-score
-    后端API-->>前端: 记忆详情 + 价值评分
+    前端->>后端API: GET /api/v1/memories/{memory_id}/total-association-score
+    后端API-->>前端: 记忆详情 + 关联评分总量
     前端-->>用户: 展示完整记忆字段
 ```
 
@@ -159,7 +158,7 @@ sequenceDiagram
 
 ### 2.5 反馈记录查询（`/feedback`）
 
-反馈记录页面用于查询 AI Agent 历次提交的价值反馈，支持按记忆 ID 和时间段筛选，并以分页列表展示结果。当指定记忆 ID 时，还会同时显示该记忆的当前综合价值评分。
+反馈记录页面用于查询 AI Agent 历次提交的价值反馈，支持按记忆 ID 和时间段筛选，并以分页列表展示结果。当指定记忆 ID 时，还会同时显示该记忆的当前关联评分总量和所在层。
 
 **查询操作**：
 
@@ -167,29 +166,20 @@ sequenceDiagram
 2. 在"时间范围"选择器中选择开始时间和结束时间（可选）。
 3. 点击"查询"按钮发起查询，或点击"重置"清空所有条件恢复初始状态。
 
-**综合价值评分面板**（仅在指定记忆 ID 时显示）：
+**关联评分总量面板**（仅在指定记忆 ID 时显示）：
 
 | 字段 | 说明 |
 | --- | --- |
-| `value_score` | 当前综合价值评分（0.0 至 1.0） |
+| `total_association_score` | 当前关联评分总量（所有相关输入信息 association_score 之和） |
 | `tier` | 当前所在层：`hot` 或 `cold` |
-| `feedback_count` | 累计收到的反馈次数 |
 
-**价值评分规则说明**：
+**层管理规则说明**：
 
-```mermaid
-flowchart TD
-    A[新记忆存入] --> B[初始进入热层 hot\nvalue_score = 0.6（与升级阈值相同）]
-    B --> C{AI Agent 提交反馈}
-    C -->|valuable=true 有价值| D[value_score + 0.1, 上限 1.0]
-    C -->|valuable=false 无价值| E[value_score - 0.1, 下限 0.0]
-    D --> F{value_score >= 0.6?}
-    E --> G{value_score < 0.3?}
-    F -->|是| H[保持在热层 hot]
-    F -->|否| I[维持当前层]
-    G -->|是| J[降级至冷层 cold]
-    G -->|否| I
-```
+记忆的层归属由系统根据所有记忆的 `total_association_score` 排名自动管理：
+
+- 新记忆存入时默认同时进入热层和冷层（初始 total_association_score = 0）。
+- 每次收到有价值反馈（`valuable=true`）时，对应 `input_memory_links` 关联分提升，total_association_score 随之增加；收到无价值反馈时，关联分降低（至 0 时移除关联），total_association_score 随之减少。
+- TierManager 根据 total_association_score 排名动态调整热层成员；热层始终保留排名靠前的记忆，直至达到内存预算上限。
 
 **反馈记录列表**：
 
@@ -217,7 +207,7 @@ flowchart TD
 
 1. 展示输入信息基础字段: `input_id`、查询原文、创建时间。
 2. 展示该输入信息关联的全部记忆及对应评分。
-3. 关联记忆列表至少包含 `memory_id`、`association_score`、`value_score`、`content`。
+3. 关联记忆列表至少包含 `memory_id`、`association_score`、`total_association_score`、`content`。
 
 ---
 
@@ -262,7 +252,7 @@ AIR_Memory MCP Server 暴露以下三个工具：
 | --- | --- | --- |
 | `save_memory` | `content: str` | 存储一条记忆，返回 `memory_id` |
 | `query_memory` | `query: str`, `top_k: int = 10` | 查询语义相关记忆并返回 `input_id`；使用关联5+热3+冷2配额策略 |
-| `feedback_memory` | `input_id: str`, `memory_id: str`, `valuable: bool` | 对指定输入信息中的记忆提交价值反馈，影响价值分、分层和输入信息关联评分 |
+| `feedback_memory` | `input_id: str`, `memory_id: str`, `valuable: bool` | 对指定输入信息中的记忆提交价值反馈，更新输入信息关联评分并根据 total_association_score 排名触发层迁移 |
 
 #### 3.1.3 MCP 工具调用示例
 
@@ -305,7 +295,7 @@ AIR_Memory MCP Server 暴露以下三个工具：
       "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "content": "用户偏好使用深色主题，字体大小设置为 16px",
       "similarity": 0.92,
-      "value_score": 0.6,
+      "total_association_score": 0,
       "association_score": 0.3,
       "source": "associated",
       "tier": "hot",
@@ -336,8 +326,6 @@ AIR_Memory MCP Server 暴露以下三个工具：
 ```json
 {
   "memory_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "value_score": 0.6,
-  "tier": "hot",
   "message": "ok"
 }
 ```
@@ -394,7 +382,6 @@ POST /api/v1/memories
 ```json
 {
   "memory_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "tier": "hot",
   "message": "ok"
 }
 ```
@@ -430,22 +417,8 @@ GET /api/v1/memories?query=<查询词>&top_k=10
       "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "content": "用户偏好使用深色主题，字体大小设置为 16px",
       "similarity": 0.92,
-      "value_score": 0.6,
+      "total_association_score": 0,
       "association_score": 0.3,
-      "source": "associated",
-      "tier": "hot",
-      "created_at": "2026-04-10T08:00:00Z"
-    }
-  ],
-  "count": 1
-}
-```
-
-curl 示例：
-
-```bash
-curl "http://localhost:8080/api/v1/memories?query=用户界面偏好&top_k=10"
-```
 
 ---
 
@@ -491,16 +464,9 @@ POST /api/v1/memories/{memory_id}/feedback
 ```json
 {
   "memory_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "value_score": 0.6,
-  "tier": "hot",
   "message": "ok"
 }
 ```
-
-curl 示例：
-
-```bash
-curl -X POST http://localhost:8080/api/v1/memories/a1b2c3d4-e5f6-7890-abcd-ef1234567890/feedback \
   -H "Content-Type: application/json" \
   -d '{"input_id": "inp-4f3a5c2e", "valuable": true}'
 ```
@@ -531,10 +497,10 @@ GET /api/v1/memories/{memory_id}/feedback/logs?page=1&page_size=20
 
 ---
 
-**查询价值评分**
+**查询关联评分总量**
 
 ```
-GET /api/v1/memories/{memory_id}/value-score
+GET /api/v1/memories/{memory_id}/total-association-score
 ```
 
 响应（HTTP 200）：
@@ -542,9 +508,8 @@ GET /api/v1/memories/{memory_id}/value-score
 ```json
 {
   "memory_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "value_score": 0.6,
-  "tier": "hot",
-  "feedback_count": 1
+  "total_association_score": 0.0,
+  "tier": "hot"
 }
 ```
 
@@ -673,7 +638,7 @@ GET /api/v1/inputs/{input_id}
     {
       "memory_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "association_score": 0.3,
-      "value_score": 0.6,
+      "total_association_score": 0.0,
       "content": "用户偏好使用深色主题，字体大小设置为 16px"
     }
   ]
@@ -738,7 +703,7 @@ sequenceDiagram
 
     Note over Agent,API: 1. 存储记忆
     Agent->>API: POST /api/v1/memories {"content": "..."}
-    API-->>Agent: {"memory_id": "...", "tier": "hot", "message": "ok"}
+    API-->>Agent: {"memory_id": "...", "message": "ok"}
 
     Note over Agent,API: 2. 查询相关记忆
     Agent->>API: GET /api/v1/memories?query=...
@@ -746,23 +711,22 @@ sequenceDiagram
 
     Note over Agent,API: 3. 提交价值反馈
     Agent->>API: POST /api/v1/memories/{id}/feedback {"input_id":"...","valuable": true}
-    API-->>Agent: {"memory_id": "...", "value_score": 0.6, "tier": "hot", "message": "ok"}
+    API-->>Agent: {"memory_id": "...", "message": "ok"}
 ```
 
 ---
 
 ## 4. 分级存储说明
 
-AIR_Memory 采用热层/冷层两级存储架构，AI Agent 无需感知层的细节，系统会根据价值评分自动管理：
+AIR_Memory 采用热层/冷层两级存储架构，AI Agent 无需感知层的细节，系统会根据关联评分总量自动管理：
 
 | 层级 | 存储介质 | 默认容量上限 | 特点 |
 | --- | --- | --- | --- |
-| 热层（hot） | ChromaDB 内存（EphemeralClient） | 6 GB | 高价值记忆常驻内存，检索性能高 |
-| 冷层（cold） | ChromaDB 磁盘（PersistentClient） | 40 GB | 持久存储，低价值或历史记忆 |
+| 热层（hot） | ChromaDB 内存（EphemeralClient） | 6 GB | 高关联评分总量记忆常驻内存，检索性能高 |
+| 冷层（cold） | ChromaDB 磁盘（PersistentClient） | 40 GB | 持久存储，低关联评分总量或历史记忆 |
 
 **升/降层规则**：
 
-- 新记忆存入时默认同时进入热层和冷层，初始价值分为 0.6（与升级阈值相同），确保重启后可被优先恢复至热层。
-- 当价值分 ≥ 0.6 时，记忆升级至热层。
-- 当价值分 < 0.3 时，记忆从热层降级至冷层。
-- 热层内存超出预算时，自动将最低价值记忆降级至冷层。
+- 新记忆存入时默认同时进入热层和冷层，初始 total_association_score = 0。
+- TierManager 根据 total_association_score 排名动态调整热层成员，排名靠前的记忆常驻热层。
+- 热层内存超出预算时，自动将 total_association_score 最低的记忆降级至冷层。
