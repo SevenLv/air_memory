@@ -92,13 +92,11 @@ class DiskManager:
             if not created_at_str:
                 continue
             try:
-                # 解析 ISO 8601 格式时间戳
-                # 处理微秒和时区
-                # 标准化格式：替换 T 为空格，截取到秒精度，加时区
-                clean_ts = created_at_str[:19].replace("T", " ")
-                created_dt = datetime.strptime(clean_ts, "%Y-%m-%d %H:%M:%S").replace(
-                    tzinfo=timezone.utc
-                )
+                # 解析 ISO 8601 格式时间戳（支持时区偏移，如 +00:00 或 +08:00）
+                created_dt = datetime.fromisoformat(created_at_str)
+                # 若无时区信息，假设为 UTC
+                if created_dt.tzinfo is None:
+                    created_dt = created_dt.replace(tzinfo=timezone.utc)
                 age_hours = (now - created_dt).total_seconds() / 3600
                 if age_hours >= protect_threshold_hours:
                     candidates_with_meta.append((mid, created_at_str))

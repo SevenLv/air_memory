@@ -30,8 +30,6 @@ class FeedbackService:
         async with aiosqlite.connect(settings.DB_PATH) as db:
             db.row_factory = aiosqlite.Row
 
-            # 检查记忆是否存在（通过 save_logs 或 input_memory_links）
-            # 通过检查是否在 ChromaDB 的方式判断记忆存在
             if valuable:
                 # 建立/增加关联分
                 async with db.execute(
