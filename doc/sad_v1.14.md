@@ -198,11 +198,11 @@ graph LR
     FrontendSrc --> Views["views/<br/>页面视图"]
     FrontendSrc --> AppVue["App.vue / main.ts"]
 
-    Doc --> PDD["pdd_v1.6.md<br/>产品定义文档"]
-    Doc --> SRD["srd_v1.3.md<br/>系统需求文档"]
+    Doc --> PDD["pdd_v1.5.md<br/>产品定义文档"]
+    Doc --> SRD["srd_v1.2.md<br/>系统需求文档"]
     Doc --> TSR["tsr_v1.3.md<br/>技术路线选型报告"]
     Doc --> TBP["tbp_v1.1.md<br/>团队建设计划"]
-    Doc --> SAD["sad_v1.15.md<br/>系统架构设计说明书"]
+    Doc --> SAD["sad_v1.14.md<br/>系统架构设计说明书"]
 ```
 
 ---
@@ -1113,7 +1113,7 @@ graph LR
 
 ## 13. 需求分配
 
-本章将系统需求文档（`/doc/srd_v1.3.md`）中的所有需求条目分配到具体的架构组件和实现模块，建立需求与架构之间的追踪关系。
+本章将系统需求文档（`/doc/srd_v1.2.md`）中的所有需求条目分配到具体的架构组件和实现模块，建立需求与架构之间的追踪关系。
 
 ### 13.1 功能需求分配
 
