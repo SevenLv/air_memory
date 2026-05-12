@@ -7,6 +7,14 @@ import aiosqlite
 from air_memory.config import settings
 
 
+def _in_placeholders(ids: list) -> str:
+    """生成 SQL IN 子句所需的参数占位符字符串（如 '?,?,?'）。
+
+    占位符只包含 '?' 字符，不含任何用户数据，配合参数化查询使用，安全无注入风险。
+    """
+    return ",".join("?" * len(ids))
+
+
 class TierManager:
     """管理热层内存预算，启动时从 ChromaDB + SQLite 按 total_association_score 加载热层。"""
 
@@ -82,11 +90,11 @@ class TierManager:
         """批量查询 total_association_score。"""
         if not memory_ids:
             return {}
-        placeholders = ",".join("?" * len(memory_ids))
+        ph = _in_placeholders(memory_ids)
         async with aiosqlite.connect(settings.DB_PATH) as db:
             async with db.execute(
                 f"SELECT memory_id, COALESCE(SUM(association_score), 0) AS total_score"
-                f" FROM input_memory_links WHERE memory_id IN ({placeholders})"
+                f" FROM input_memory_links WHERE memory_id IN ({ph})"
                 f" GROUP BY memory_id",
                 memory_ids,
             ) as cursor:

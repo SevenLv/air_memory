@@ -15,6 +15,14 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _in_placeholders(ids: list) -> str:
+    """生成 SQL IN 子句所需的参数占位符字符串（如 '?,?,?'）。
+
+    占位符只包含 '?' 字符，不含任何用户数据，配合参数化查询使用，安全无注入风险。
+    """
+    return ",".join("?" * len(ids))
+
+
 class FeedbackService:
     """价值反馈服务，负责关联评分更新、日志写入和层间迁移触发。"""
 
@@ -140,6 +148,7 @@ class FeedbackService:
             conditions.append("created_at <= ?")
             params.append(end_time)
 
+        # where_clause 由硬编码的条件片段组成，值通过 params 参数化传入，安全无注入风险。
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         async with aiosqlite.connect(settings.DB_PATH) as db:
@@ -187,6 +196,7 @@ class FeedbackService:
         if end_time:
             conditions.append("created_at <= ?")
             params.append(end_time)
+        # where_clause 由硬编码的条件片段组成，值通过 params 参数化传入，安全无注入风险。
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         async with aiosqlite.connect(settings.DB_PATH) as db:

@@ -14,6 +14,14 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _in_placeholders(ids: list) -> str:
+    """生成 SQL IN 子句所需的参数占位符字符串（如 '?,?,?'）。
+
+    占位符只包含 '?' 字符，不含任何用户数据，配合参数化查询使用，安全无注入风险。
+    """
+    return ",".join("?" * len(ids))
+
+
 class DiskManager:
     """磁盘容量管理器，监控冷层 ChromaDB 和 SQLite 磁盘占用，触发淘汰策略。"""
 
@@ -109,11 +117,11 @@ class DiskManager:
         candidate_ids = [mid for mid, _ in candidates_with_meta]
         # 获取关联评分
         if candidate_ids:
-            placeholders = ",".join("?" * len(candidate_ids))
+            ph = _in_placeholders(candidate_ids)
             async with aiosqlite.connect(settings.DB_PATH) as db:
                 async with db.execute(
                     f"SELECT memory_id, COALESCE(SUM(association_score), 0) AS total_score"
-                    f" FROM input_memory_links WHERE memory_id IN ({placeholders})"
+                    f" FROM input_memory_links WHERE memory_id IN ({ph})"
                     f" GROUP BY memory_id",
                     candidate_ids,
                 ) as cursor:

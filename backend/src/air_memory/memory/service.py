@@ -18,6 +18,14 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _in_placeholders(ids: list) -> str:
+    """生成 SQL IN 子句所需的参数占位符字符串（如 '?,?,?'）。
+
+    占位符只包含 '?' 字符，不含任何用户数据，配合参数化查询使用，安全无注入风险。
+    """
+    return ",".join("?" * len(ids))
+
+
 class MemoryService:
     """记忆存储和查询的核心业务逻辑服务。"""
 
@@ -314,12 +322,12 @@ class MemoryService:
         """批量查询记忆的 total_association_score。"""
         if not memory_ids:
             return {}
-        placeholders = ",".join("?" * len(memory_ids))
+        ph = _in_placeholders(memory_ids)
         async with aiosqlite.connect(settings.DB_PATH) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 f"SELECT memory_id, COALESCE(SUM(association_score), 0) AS total_score"
-                f" FROM input_memory_links WHERE memory_id IN ({placeholders})"
+                f" FROM input_memory_links WHERE memory_id IN ({ph})"
                 f" GROUP BY memory_id",
                 memory_ids,
             ) as cursor:
