@@ -36,8 +36,8 @@ class DataMigrationManager:
                     await self._record_migration(migration_id)
                     _logger.info("迁移 %s 完成。", migration_id)
         except Exception as e:
-            _logger.error("数据迁移失败：%s", e)
-            raise RuntimeError(f"数据迁移失败：{e}") from e
+            _logger.error("数据迁移失败：%s", e, exc_info=True)
+            raise RuntimeError("数据迁移失败，请检查日志获取详细信息") from e
 
     async def _ensure_migrations_table(self) -> None:
         """确保 schema_migrations 表存在。"""
