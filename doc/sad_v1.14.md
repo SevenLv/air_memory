@@ -18,7 +18,7 @@
 | 1.11 | 2026-4-10 | 放弃 Docker 部署方案，改为 Python 本机直接运行；FastAPI 统一承载后端 API 与前端静态文件服务；前端预构建产物 dist/ 随仓库分发；自启动由 macOS LaunchAgent / Windows Task Scheduler 替代 Docker restart policy；更新技术栈、部署架构、性能预算、研发计划及需求分配章节 |
 | 1.12 | 2026-4-14 | 新增全局反馈记录列表 API（`GET /api/v1/logs/feedback`，支持 memory_id/时间范围过滤和分页）；新增 `FeedbackLogsWithTotalResponse` 数据模型；补充 `FeedbackService.get_all_feedback_logs()` 方法；`main.py` 启动时对 12 个第三方库子 logger 设置 WARNING 级别（抑制 Windows 日志噪声）；前端 LogsView 新增乱码检测徽章；参考文档更新：PDD v1.3→v1.4，SRD v1.0→v1.1 |
 | 1.13 | 2026-4-15 | 新增 `_ForceUTF8JSONMiddleware` 纯 ASGI 中间件，强制所有 `application/json` 请求的 Content-Type charset 覆写为 `utf-8`，修复 AI 工具调用框架不设置或错误设置 charset 导致中文乱码的问题；更新接口规范说明，移除客户端强制设置 charset 的要求；安全设计章节补充 UTF-8 强制中间件说明 |
-| 1.14 | 2026-5-11 | 新增输入信息关联架构: 查询接口返回 input_id 并采用关联5+热3+冷2配额, 反馈接口新增 input_id 参数并维护输入信息-记忆关联评分, Web UI 新增输入信息列表与详情页, 补充输入信息数据模型与接口规范；移除 fast_only 参数，查询接口统一执行分层配额检索 |
+| 1.14 | 2026-5-11 | 新增输入信息关联架构: 查询接口返回 input_id 并采用关联5+热3+冷2配额, 反馈接口新增 input_id 参数并维护输入信息-记忆关联评分, Web UI 新增输入信息列表与详情页, 补充输入信息数据模型与接口规范；移除 fast_only 参数，查询接口统一执行分层配额检索；查询配额改为溢出填充模式；新增 DataMigrationManager 组件与数据升级启动流程 |
 
 ---
 
@@ -40,7 +40,7 @@
 
 AIR_Memory 是一个为 AI Agent 设计的本地部署记忆系统。AI Agent 可通过 AIR_Memory 高效地存储记忆、查询相关记忆，并能对查询结果的价值进行反馈评价。
 
-系统通过分级存储架构（热层/冷层），在 8GB 内存上限和 40GB 磁盘上限约束下最大化高关联评分总量记忆的检索性能。查询接口会为每次输入生成 `input_id` 并按"关联记忆优先 + 热层匹配 + 冷层匹配"策略（关联最多5+热3+冷2）返回最多 10 条结果，反馈接口基于 `input_id` 维护输入信息与记忆关联评分。磁盘空间触及上限时系统会自动淘汰关联评分总量最低的最旧数据（创建时间在 168 小时内的记忆受保护不得淘汰）。系统同时向人类提供 Web 管理界面进行记忆查询、删除、日志查看、关联评分总量查询和输入信息管理。
+系统通过分级存储架构（热层/冷层），在 8GB 内存上限和 40GB 磁盘上限约束下最大化高关联评分总量记忆的检索性能。查询接口会为每次输入生成 `input_id` 并按"关联记忆优先 + 热层匹配 + 冷层匹配"溢出填充策略（关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10）返回最多 10 条结果，反馈接口基于 `input_id` 维护输入信息与记忆关联评分。磁盘空间触及上限时系统会自动淘汰关联评分总量最低的最旧数据（创建时间在 168 小时内的记忆受保护不得淘汰）。系统同时向人类提供 Web 管理界面进行记忆查询、删除、日志查看、关联评分总量查询和输入信息管理。
 
 ### 1.4 术语定义
 
@@ -151,10 +151,11 @@ graph TB
 | FastAPI Backend | 后端服务入口，提供 REST API 和 MCP 协议接口，协调各业务模块 |
 | MCP Server | 实现 MCP 协议，向 AI Agent 暴露记忆存储、查询和价值反馈工具 |
 | REST API | 提供标准 HTTP 接口，兼容所有 AI Agent 和管理 UI |
-| MemoryService | 记忆存储和查询的核心业务逻辑；执行关联5+热3+冷2分层配额检索策略 |
+| MemoryService | 记忆存储和查询的核心业务逻辑；执行溢出填充分层配额检索策略（关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10） |
 | FeedbackService | 接收 AI Agent 的价值反馈，更新 `input_memory_links` 关联评分；写入 Feedback 日志；重新计算 `total_association_score` 并驱动热层/冷层之间的记忆迁移 |
 | TierManager | 管控热层内存预算（≤ 6GB），启动时按 `total_association_score DESC` 排序优先恢复 tier='hot' 记忆、再补充冷层高关联评分总量记忆，预算超限时优先驱逐关联评分总量最低的记忆（保护从未被评价的新记忆） |
 | DiskManager | 监控冷层磁盘占用，接近 40GB 上限时自动淘汰关联评分总量最低且 created_at 最早的记忆；**创建时间在 168 小时（7×24h）以内的记忆受保护，不参与淘汰** |
+| DataMigrationManager | 系统启动时自动检测 SQLite 旧版本 schema（如 memory_values 表、value_score 字段），执行一次性安全数据升级，升级完成后解锁主功能启动；升级失败时记录错误并安全退出 |
 | LogService | 记录 AI Agent 的存储和查询操作日志，写入 SQLite |
 | 热层 ChromaDB (EphemeralClient) | 纯内存向量索引，存储高价值记忆；HNSW 索引常驻 RAM，查询延迟 ≤ 10ms |
 | 冷层 ChromaDB (PersistentClient) | 磁盘持久化向量索引，存储普通记忆；仅在分层配额检索冷层部分时访问，查询延迟不保证 |
@@ -216,7 +217,7 @@ graph LR
 - 创建 FastAPI 应用实例
 - 注册所有路由（REST API router）
 - 配置 CORS、异常处理、中间件
-- 应用启动/关闭生命周期事件：预热 Embedding 模型；初始化热层/冷层 ChromaDB；恢复热层记忆
+- 应用启动/关闭生命周期事件：**数据迁移前置**：在加载热层记忆和预热模型之前，`DataMigrationManager` 先检测并执行旧版本数据升级；预热 Embedding 模型；初始化热层/冷层 ChromaDB；恢复热层记忆
 - **第三方库日志噪声抑制**：在 import 阶段完成后，对以下 12 个第三方库子 logger 显式设置级别为 `WARNING`，防止向 stderr 输出 INFO 级别日志（在 Windows 环境下可避免 CMD 窗口启动时出现日志闪烁）：`chromadb`、`chromadb.config`、`chromadb.segment`、`sentence_transformers`、`httpx`、`httpcore`、`mcp`、`mcp.server`、`mcp.server.streamable_http`、`fastmcp`、`opentelemetry`、`posthog`
 
 #### 5.1.2 `api/` - REST API 层
@@ -238,7 +239,7 @@ graph LR
 
 - **`server.py`**（待实现）：实现 MCP Server
   - Tool: `save_memory(content: str)` - 存储记忆
-  - Tool: `query_memory(query: str, top_k: int)` - 查询记忆，返回 `input_id` 及分层配额结果（关联5+热3+冷2）
+  - Tool: `query_memory(query: str, top_k: int)` - 查询记忆，返回 `input_id` 及溢出填充分层配额结果（关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10）
   - Tool: `feedback_memory(input_id: str, memory_id: str, valuable: bool)` - 提交记忆价值反馈并更新输入信息关联评分
 
 #### 5.1.4 `memory/` - 记忆存储层
@@ -247,7 +248,7 @@ graph LR
   - 维护两个 ChromaDB 实例：`hot_client`（EphemeralClient，内存）和 `cold_client`（PersistentClient，磁盘）
   - `save(content: str) -> str`：生成 Embedding，初始同时存入热层和冷层（无独立 value_score，新记忆 total_association_score=0，默认进入热层），返回 memory_id
   - `query(query: str, top_k: int) -> list[Memory]`：
-    - 统一执行分层配额检索：优先返回输入信息关联记忆（最多 5 条），再补充热层匹配（最多 3 条）和冷层匹配（最多 2 条），合并去重后总数最多 10 条
+    - 统一执行溢出填充分层配额检索：优先返回输入信息关联记忆（最多 5 条），再补充热层匹配（固定 3 条，若关联不足则热层可补充至关联+热层合计 8 条）和冷层匹配（固定 2 条，若关联+热层合计不足 8 条则冷层补齐至总计 10 条），合并去重后总数最多 10 条
     - 每次查询生成并返回 `input_id`
   - `_promote(memory_id: str)`：将记忆从冷层迁移到热层（total_association_score 排名上升时触发）
   - `_demote(memory_id: str)`：将记忆从热层迁移回冷层（total_association_score 排名下降或热层容量不足时触发）
@@ -281,6 +282,14 @@ graph LR
     2. 从冷层 ChromaDB 和 SQLite 相关表中删除这些记忆的全部数据
     3. 循环执行直到磁盘占用降至安全水位以下（`DISK_SAFE_GB`，默认 35GB）
   - 在 FastAPI 启动时注册每小时定期执行 `check_and_evict()`
+
+#### 5.1.7 `data_migration.py` - 数据迁移层（新增）
+
+- **`data_migration.py`**（待实现）：DataMigrationManager 类
+  - `run_migrations()`：检查 SQLite schema 版本，按需执行迁移脚本（幂等，已执行过的迁移跳过）
+  - 迁移脚本：M001 - 废弃 `memory_values` 表（将其标记为废弃或重命名为 `_legacy_memory_values`，不删除以防回滚需要）
+  - 迁移脚本：M002 - 在 `memories` 表或元数据中清理 `value_score` 字段（若存在）
+  - 使用 `schema_migrations` 表记录已执行的迁移（含迁移编号、执行时间）
 
 #### 5.1.7 `log/` - 操作日志层
 
@@ -398,13 +407,13 @@ sequenceDiagram
     MemSvc->>ET: (3) 生成查询 Embedding 向量
     ET-->>MemSvc: query_vector
     par 并发搜索
-        MemSvc->>Hot: (4a) 热层 HNSW 搜索（最多3条）
+        MemSvc->>Hot: (4a) 热层 HNSW 搜索（固定3条，若关联不足则补充至关联+热层合计8条）
         Hot-->>MemSvc: hot_results
     and
-        MemSvc->>Cold: (4b) 冷层 HNSW 搜索（最多2条）
+        MemSvc->>Cold: (4b) 冷层 HNSW 搜索（固定2条，若关联+热层合计不足8条则补齐至总计10条）
         Cold-->>MemSvc: cold_results
     end
-    MemSvc->>MemSvc: (5) 组装结果: 关联记忆≤5 + 热层匹配≤3 + 冷层匹配≤2, 合并去重后总数≤10
+    MemSvc->>MemSvc: (5) 组装结果: 关联记忆≤5 + 热层≤(8−关联实际数) + 冷层补齐至10, 合并去重后总数≤10
     MemSvc-->>API: merged_results
     API-->>Agent: {"input_id":"...","memories":[...], "count":N}
     Note over Agent: 响应时间无硬性限制，应尽力在合理时间内返回
@@ -581,7 +590,7 @@ flowchart LR
 | Tool 名称 | 参数 | 说明 |
 | --- | --- | --- |
 | `save_memory` | `content: str` | 存储一条记忆，返回 memory_id |
-| `query_memory` | `query: str`, `top_k: int = 10` | 查询相关记忆并返回 `input_id`；统一采用关联5+热3+冷2配额策略 |
+| `query_memory` | `query: str`, `top_k: int = 10` | 查询相关记忆并返回 `input_id`；统一采用溢出填充配额策略（关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10） |
 | `feedback_memory` | `input_id: str`, `memory_id: str`, `valuable: bool` | 对指定输入信息中的记忆提交价值反馈，更新输入信息关联评分并根据 total_association_score 排名触发层迁移 |
 
 ---
@@ -727,7 +736,7 @@ graph TB
 | 操作 | 目标响应时间 | 适用条件 |
 | --- | --- | --- |
 | 记忆存储 | ≤ 100ms | - |
-| 记忆查询 | 无硬性上限 | 统一执行关联5+热3+冷2分层配额检索 |
+| 记忆查询 | 无硬性上限 | 统一执行溢出填充分层配额检索（关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10） |
 | 价值反馈 | ≤ 50ms | SQLite 更新 + Feedback 日志写入，层迁移异步执行 |
 | 系统总内存占用 | ≤ 8GB | 热层 + 冷层（当前已加载部分）+ 基础运行时 |
 | 系统磁盘占用 | ≤ 40GB | 冷层 ChromaDB 数据 + SQLite + Embedding 模型缓存（~90MB）；触及上限前自动淘汰低价值最旧数据 |
@@ -842,7 +851,7 @@ TierManager 在以下时机检查并调整层分配：
 
 #### 10.5.1 响应时间预算更新
 
-**记忆查询（分层配额检索：关联5+热3+冷2）**：
+**记忆查询（分层配额检索：溢出填充模式，关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10）**：
 
 | 步骤 | 组件 | 典型耗时 |
 | --- | --- | --- |
@@ -933,8 +942,8 @@ graph LR
 | --- | --- |
 | M1-AC-01 | 后端服务能够正常启动，所有模块初始化无报错，Embedding 模型预热完成 |
 | M1-AC-02 | `POST /api/v1/memories` 接口能正确接收记忆内容并返回 `memory_id`；端到端响应时间在预热后不超过配置的存储响应时间阈值（默认 100ms，满足 PR-001） |
-| M1-AC-03 | `GET /api/v1/memories` 执行分层配额检索（关联5+热3+冷2），结果合并去重（满足 FR-API-003） |
-| M1-AC-04 | `GET /api/v1/memories` 返回 `input_id`，分层配额结果正确（满足 FR-API-003） |
+| M1-AC-03 | `GET /api/v1/memories` 执行溢出填充分层配额检索（关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10），结果合并去重（满足 FR-API-003） |
+| M1-AC-04 | `GET /api/v1/memories` 返回 `input_id`，溢出填充配额结果正确（满足 FR-API-003） |
 | M1-AC-05 | `POST /api/v1/memories/{id}/feedback` 能正确更新 input_memory_links 关联评分，重新计算 total_association_score，并根据排名变化触发异步层间迁移（满足 FR-API-006, FR-API-007） |
 | M1-AC-06 | `DELETE /api/v1/memories/{id}` 能同时从热层、冷层 ChromaDB 及 SQLite 关联表中删除该记忆的所有数据（满足 FR-UI-002） |
 | M1-AC-07 | MCP Server 正确暴露 `save_memory`、`query_memory`、`feedback_memory` 三个工具（满足 FR-API-001） |
@@ -1125,6 +1134,7 @@ graph LR
 | FR-DEP-002 | Windows 本地部署 | Python 本机直接运行 + FastAPI StaticFiles | `start.bat`、`backend/src/air_memory/main.py`（StaticFiles 挂载）|
 | FR-DEP-003 | 一键部署 | Python 本机直接运行 | `start.sh` / `start.bat`（自动创建 venv、安装依赖、启动服务）|
 | FR-DEP-004 | 系统自启动 | macOS LaunchAgent / Windows Task Scheduler | `start.sh --install` / `start.bat /install`（写入系统自启动配置）|
+| FR-DEP-005 | 旧版本数据自动升级 | DataMigrationManager | `data_migration.py` |
 
 #### 13.1.2 AI Agent 接口需求
 
@@ -1132,7 +1142,7 @@ graph LR
 | --- | --- | --- | --- |
 | FR-API-001 | AI Agent 接口 | MCP Server + REST API | `backend/src/air_memory/mcp/server.py`、`backend/src/air_memory/api/` |
 | FR-API-002 | 记忆存储接口 | MemoryService + REST API / MCP | `memory/service.py`（`save()`）、`api/memory.py`（`POST /memories`）、`mcp/server.py`（`save_memory`）|
-| FR-API-003 | 记忆查询接口 | MemoryService + REST API / MCP | `memory/service.py`（`query()`，统一执行关联5+热3+冷2分层配额检索）、`api/memory.py`（`GET /memories`）、`mcp/server.py`（`query_memory`）|
+| FR-API-003 | 记忆查询接口 | MemoryService + REST API / MCP | `memory/service.py`（`query()`，统一执行溢出填充分层配额检索：关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10）、`api/memory.py`（`GET /memories`）、`mcp/server.py`（`query_memory`）|
 | FR-API-006 | 记忆价值反馈接口 | FeedbackService + REST API / MCP | `feedback/service.py`（`submit()`）、`api/memory.py`（`POST /memories/{id}/feedback`）、`mcp/server.py`（`feedback_memory`）|
 | FR-API-007 | 价值评分驱动分级迁移 | FeedbackService + TierManager | `feedback/service.py`（触发迁移判断）、`memory/tier_manager.py`（`_promote()`、`_demote()`）|
 | FR-API-008 | 输入信息关联生命周期管理 | MemoryService + FeedbackService + SQLite | `memory/service.py`（输入信息关联检索）、`feedback/service.py`（关联评分增减与移除）、`input_memory_links` 表 |
@@ -1166,7 +1176,7 @@ graph LR
 | 需求编号 | 需求简述 | 负责架构组件 | 关键设计决策 |
 | --- | --- | --- | --- |
 | PR-001 | 记忆存储响应时间 ≤ 100ms | MemoryService + sentence-transformers + 冷层 ChromaDB | 服务启动预热 Embedding 模型；日志写入异步执行（`asyncio.create_task`）；FastAPI 全程 async/await |
-| PR-002 | 记忆查询无硬性时间限制 | MemoryService + 热层/冷层 ChromaDB | 统一执行关联5+热3+冷2配额检索（`asyncio.gather`）；结果合并去重；典型耗时 100～500ms |
+| PR-002 | 记忆查询无硬性时间限制 | MemoryService + 热层/冷层 ChromaDB | 统一执行溢出填充配额检索（`asyncio.gather`）；结果合并去重；典型耗时 100～500ms |
 
 #### 13.2.2 资源占用需求
 
