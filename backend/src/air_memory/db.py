@@ -4,7 +4,7 @@ import aiosqlite
 
 from air_memory.config import settings
 
-# DDL：创建所有数据表
+# DDL：创建所有数据表（新 Schema）
 _DDL = """
 CREATE TABLE IF NOT EXISTS save_logs (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -16,9 +16,33 @@ CREATE TABLE IF NOT EXISTS save_logs (
 
 CREATE TABLE IF NOT EXISTS query_logs (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    input_id   TEXT,
     query      TEXT    NOT NULL,
     results    TEXT    NOT NULL,
-    fast_only  INTEGER NOT NULL,
+    created_at TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS input_infos (
+    input_id   TEXT PRIMARY KEY,
+    query      TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS input_memory_links (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    input_id          TEXT NOT NULL,
+    memory_id         TEXT NOT NULL,
+    association_score REAL NOT NULL DEFAULT 0.0,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL,
+    UNIQUE(input_id, memory_id)
+);
+
+CREATE TABLE IF NOT EXISTS feedback_logs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    input_id   TEXT,
+    memory_id  TEXT    NOT NULL,
+    valuable   INTEGER NOT NULL,
     created_at TEXT    NOT NULL
 );
 
@@ -29,13 +53,6 @@ CREATE TABLE IF NOT EXISTS memory_values (
     feedback_count INTEGER NOT NULL DEFAULT 0,
     created_at     TEXT    NOT NULL,
     updated_at     TEXT    NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS feedback_logs (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    memory_id  TEXT    NOT NULL,
-    valuable   INTEGER NOT NULL,
-    created_at TEXT    NOT NULL
 );
 """
 

@@ -33,6 +33,9 @@ class Settings:
     # 价值分变化步长
     FEEDBACK_STEP: float = float(os.getenv("FEEDBACK_STEP", "0.1"))
 
+    # 关联评分变化步长（每次正向反馈增加、负向反馈减少的量）
+    ASSOCIATION_SCORE_STEP: float = float(os.getenv("ASSOCIATION_SCORE_STEP", "1.0"))
+
     # ChromaDB 冷层数据目录
     CHROMA_COLD_PATH: str = os.getenv("CHROMA_COLD_PATH", "./data/chroma_cold")
 

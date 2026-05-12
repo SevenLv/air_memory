@@ -135,6 +135,11 @@ async def lifespan(app: FastAPI):
     # 初始化 SQLite 数据库
     await init_db()
 
+    # 执行 Schema 迁移（幂等，已执行的迁移会被跳过）
+    from air_memory.data_migration import DataMigrationManager
+    migration_mgr = DataMigrationManager()
+    await migration_mgr.run_migrations()
+
     # 预热 Embedding 模型（阻塞操作，在线程中执行）
     model = await asyncio.to_thread(SentenceTransformer, settings.EMBEDDING_MODEL)
 

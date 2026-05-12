@@ -44,22 +44,7 @@ async def save_memory(content: str) -> str:
     if _memory_service is None or _log_service is None:
         raise RuntimeError("MCP 服务尚未初始化，请稍后重试")
 
-    import aiosqlite
-    from datetime import datetime, timezone
-    from air_memory.config import settings
-
     memory_id = await _memory_service.save(content)
-    now = datetime.now(timezone.utc).isoformat()
-
-    async with aiosqlite.connect(settings.DB_PATH) as db:
-        await db.execute(
-            "INSERT OR IGNORE INTO memory_values"
-            " (memory_id, value_score, tier, feedback_count, created_at, updated_at)"
-            " VALUES (?, ?, 'hot', 0, ?, ?)",  # 记忆已写入热层，tier 应为 hot
-            (memory_id, settings.INITIAL_VALUE_SCORE, now, now),
-        )
-        await db.commit()
-
     asyncio.create_task(_log_service.log_save(content, memory_id))
     return memory_id
 
@@ -67,55 +52,50 @@ async def save_memory(content: str) -> str:
 @mcp.tool()
 async def query_memory(
     query: str,
-    top_k: int = 5,
-    fast_only: bool = True,
+    top_k: int = 10,
 ) -> str:
-    """查询相关记忆。
+    """查询相关记忆，统一执行溢出填充配额检索。
 
     Args:
         query: 查询文本。
-        top_k: 返回最相关记忆的数量，默认 5。
-        fast_only: 为 True 时仅检索热层（≤ 100ms），默认 True；为 False 时同时检索热层和冷层。
+        top_k: 返回最相关记忆的数量，默认 10，最大 10。
 
     Returns:
-        JSON 字符串，包含记忆条目列表。示例结构：
-        [{"id": "...", "content": "记忆内容", "similarity": 0.95,
-          "value_score": 0.6, "tier": "hot", "created_at": "..."}]
-        列表按相似度降序排列，最多返回 top_k 条。
+        JSON 字符串，包含 input_id 和记忆条目列表。示例结构：
+        {"input_id": "...", "memories": [{"id": "...", "content": "记忆内容",
+          "similarity": 0.95, "total_association_score": 2.0,
+          "source": "hot", "tier": "hot", "created_at": "..."}]}
     """
     if _memory_service is None or _log_service is None:
         raise RuntimeError("MCP 服务尚未初始化，请稍后重试")
 
-    memories = await _memory_service.query(query, top_k, fast_only)
+    input_id, memories = await _memory_service.query(query, top_k)
     results = [m.model_dump() for m in memories]
-    asyncio.create_task(_log_service.log_query(query, results, fast_only))
-    # 返回整体 JSON 字符串，避免 MCP SDK 将 list[dict] 拆分为多个 TextContent 块
-    # ensure_ascii=False 确保中文字符直接输出，而非 \uXXXX 转义
-    return json.dumps(results, ensure_ascii=False)
+    asyncio.create_task(_log_service.log_query(input_id, query, results))
+    return json.dumps({"input_id": input_id, "memories": results}, ensure_ascii=False)
 
 
 @mcp.tool()
-async def feedback_memory(memory_id: str, valuable: bool) -> dict:
+async def feedback_memory(input_id: str, memory_id: str, valuable: bool) -> dict:
     """对指定记忆提交价值反馈。
 
     Args:
+        input_id: 触发本次反馈的查询 input_id（从 query_memory 返回结果中获取）。
         memory_id: 目标记忆的 ID。
         valuable: True 表示有价值，False 表示无价值。
 
     Returns:
-        包含 memory_id, value_score, tier 的字典。
+        包含 memory_id 和 message 的字典。
     """
     if _feedback_service is None:
         raise RuntimeError("MCP 服务尚未初始化，请稍后重试")
 
     try:
-        value_score, tier = await _feedback_service.submit(memory_id, valuable)
+        await _feedback_service.submit(input_id, memory_id, valuable)
     except ValueError as e:
         return {"error": str(e)}
 
     return {
         "memory_id": memory_id,
-        "value_score": value_score,
-        "tier": tier,
         "message": "ok",
     }

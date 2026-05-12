@@ -11,8 +11,8 @@ class SaveLog(BaseModel):
     content: str
     created_at: str
     memory_deleted: bool
-    value_score: float | None = None
-    is_garbled: bool = False  # 新增：服务端计算的乱码检测结果
+    total_association_score: float | None = None  # 替代 value_score
+    is_garbled: bool = False
 
 
 class SaveLogsResponse(BaseModel):
@@ -26,9 +26,9 @@ class QueryLog(BaseModel):
     """查询操作日志条目。"""
 
     id: int
+    input_id: str | None = None
     query: str
     results: str
-    fast_only: bool
     created_at: str
 
 

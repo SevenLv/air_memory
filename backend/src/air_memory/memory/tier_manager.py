@@ -1,67 +1,69 @@
 """分级存储管理器，负责热层内存预算和启动时恢复热层。"""
 
+import asyncio
+
 import aiosqlite
 
 from air_memory.config import settings
 
 
 class TierManager:
-    """管理热层内存预算，启动时从 SQLite 按 value_score 批量加载热层。"""
+    """管理热层内存预算，启动时从 ChromaDB + SQLite 按 total_association_score 加载热层。"""
 
     def __init__(self, memory_service: "MemoryService") -> None:  # noqa: F821
         from air_memory.memory.service import MemoryService  # 延迟导入避免循环
         self._memory_service: MemoryService = memory_service
 
     async def restore_hot_tier(self) -> None:
-        """启动时从 SQLite 恢复热层：优先加载关机前已在热层的记忆，预算充足时再补充冷层中高价值记忆。"""
-        async with aiosqlite.connect(settings.DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT memory_id, value_score FROM memory_values"
-                " WHERE tier = 'hot' OR value_score >= ?"
-                # 先加载 tier='hot'（关机前在热层的记忆），再按 value_score 降序加载冷层高价值记忆
-                " ORDER BY CASE WHEN tier = 'hot' THEN 0 ELSE 1 END ASC, value_score DESC",
-                (settings.PROMOTE_THRESHOLD,),
-            ) as cursor:
-                rows = await cursor.fetchall()
+        """启动时从冷层恢复热层：按 total_association_score 降序加载，不超过内存预算。"""
+        # 获取冷层所有记忆 ID
+        cold_ids = await asyncio.to_thread(self._memory_service.get_all_cold_ids)
+        if not cold_ids:
+            return
 
-        for row in rows:
-            # 检查热层内存预算
+        # 从 SQLite 获取每个记忆的 total_association_score
+        scores = await self._get_scores_for_ids(cold_ids)
+
+        # 获取冷层元数据（tier 字段用于优先排序）
+        metadatas = await asyncio.to_thread(
+            self._memory_service.get_cold_metadata, cold_ids
+        )
+        meta_map = {mid: (meta or {}) for mid, meta in zip(cold_ids, metadatas)}
+
+        # 排序：先按 tier='hot' 优先（关机前在热层），再按 total_association_score DESC
+        def sort_key(mid: str):
+            meta = meta_map.get(mid, {})
+            tier_priority = 0 if meta.get("tier") == "hot" else 1
+            score = scores.get(mid, 0.0)
+            return (tier_priority, -score)
+
+        sorted_ids = sorted(cold_ids, key=sort_key)
+
+        for memory_id in sorted_ids:
             if self._memory_service.get_hot_memory_mb() >= settings.HOT_MEMORY_BUDGET_MB:
                 break
-            await self._memory_service.promote(row["memory_id"], row["value_score"])
+            await self._memory_service.promote(memory_id)
 
     async def check_memory_budget(self) -> None:
-        """检查热层内存预算，超出时将最低价值记忆降级至冷层。
-        驱逐顺序：优先驱逐已有反馈且价值最低的记忆，其次才驱逐从未被评价的新记忆。"""
-        from air_memory.memory.service import MemoryService  # noqa: F401
-
+        """检查热层内存预算，超出时将最低关联评分记忆降级至冷层。"""
         if self._memory_service.get_hot_memory_mb() <= settings.HOT_MEMORY_BUDGET_MB:
             return
 
-        # 驱逐顺序：已有反馈(feedback_count>0)的低价值记忆优先；新记忆(feedback_count=0)最后
-        async with aiosqlite.connect(settings.DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT memory_id, value_score FROM memory_values"
-                " WHERE tier = 'hot'"
-                " ORDER BY CASE WHEN feedback_count > 0 THEN 0 ELSE 1 END ASC,"
-                "          value_score ASC"
-            ) as cursor:
-                rows = await cursor.fetchall()
+        # 获取热层所有记忆 ID
+        hot_ids = await asyncio.to_thread(self._memory_service.get_all_hot_ids)
+        if not hot_ids:
+            return
 
-        for row in rows:
+        # 获取每个记忆的 total_association_score
+        scores = await self._get_scores_for_ids(hot_ids)
+
+        # 驱逐顺序：total_association_score 低的优先驱逐（分数相同时按 ID 稳定排序）
+        sorted_ids = sorted(hot_ids, key=lambda mid: (scores.get(mid, 0.0), mid))
+
+        for memory_id in sorted_ids:
             if self._memory_service.get_hot_memory_mb() <= settings.HOT_MEMORY_BUDGET_MB:
                 break
-            await self._memory_service.demote(row["memory_id"], row["value_score"])
-            # 更新 SQLite 中的 tier 字段
-            async with aiosqlite.connect(settings.DB_PATH) as db:
-                from datetime import datetime, timezone
-                await db.execute(
-                    "UPDATE memory_values SET tier = 'cold', updated_at = ? WHERE memory_id = ?",
-                    (datetime.now(timezone.utc).isoformat(), row["memory_id"]),
-                )
-                await db.commit()
+            await self._memory_service.demote(memory_id)
 
     def get_hot_stats(self) -> dict:
         """返回热层统计信息。"""
@@ -71,3 +73,25 @@ class TierManager:
             "hot_memory_mb": round(self._memory_service.get_hot_memory_mb(), 2),
             "memory_budget_mb": settings.HOT_MEMORY_BUDGET_MB,
         }
+
+    # ------------------------------------------------------------------
+    # 私有辅助方法
+    # ------------------------------------------------------------------
+
+    async def _get_scores_for_ids(self, memory_ids: list[str]) -> dict[str, float]:
+        """批量查询 total_association_score。"""
+        if not memory_ids:
+            return {}
+        placeholders = ",".join("?" * len(memory_ids))
+        async with aiosqlite.connect(settings.DB_PATH) as db:
+            async with db.execute(
+                f"SELECT memory_id, COALESCE(SUM(association_score), 0) AS total_score"
+                f" FROM input_memory_links WHERE memory_id IN ({placeholders})"
+                f" GROUP BY memory_id",
+                memory_ids,
+            ) as cursor:
+                rows = await cursor.fetchall()
+        result = {mid: 0.0 for mid in memory_ids}
+        for row in rows:
+            result[row[0]] = float(row[1])
+        return result

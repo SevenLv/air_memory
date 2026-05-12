@@ -15,12 +15,7 @@ def _now_iso() -> str:
 
 
 def _is_garbled(content: str) -> bool:
-    """检测内容是否疑似乱码（CP1252 问号损坏或其他编码损坏）。
-
-    场景一：纯 ???? 模式（CP1252 编码失败，中文 → 纯 ASCII 问号）
-      - 内容全为 ASCII，但问号占比 > 50%，且长度 >= 2
-    场景二：混合模式（含非 ASCII 字符，且问号占比 > 30%）
-    """
+    """检测内容是否疑似乱码。"""
     if not content:
         return False
     length = len(content)
@@ -28,11 +23,9 @@ def _is_garbled(content: str) -> bool:
         return False
     question_count = content.count('?')
     question_ratio = question_count / length
-    # 场景一：纯 ASCII 问号（CP1252 损坏）
     has_non_ascii = any(not c.isascii() for c in content)
     if not has_non_ascii and question_ratio > 0.5:
         return True
-    # 场景二：混合乱码（含非 ASCII 且高问号占比）
     if has_non_ascii and question_ratio > 0.3:
         return True
     return False
@@ -46,9 +39,7 @@ class LogService:
         if content and _is_garbled(content):
             import logging as _log
             _log.getLogger(__name__).warning(
-                "save_log 内容疑似乱码（问号比例过高），"
-                "请确认 start 脚本中 PYTHONUTF8=1 已正确生效。memory_id=%s",
-                memory_id,
+                "save_log 内容疑似乱码，memory_id=%s", memory_id,
             )
         async with aiosqlite.connect(settings.DB_PATH) as db:
             await db.execute(
@@ -59,14 +50,14 @@ class LogService:
             await db.commit()
 
     async def log_query(
-        self, query: str, results: list, fast_only: bool
+        self, input_id: str, query: str, results: list
     ) -> None:
-        """异步写入查询操作日志。"""
+        """异步写入查询操作日志（含 input_id）。"""
         async with aiosqlite.connect(settings.DB_PATH) as db:
             await db.execute(
-                "INSERT INTO query_logs (query, results, fast_only, created_at)"
+                "INSERT INTO query_logs (input_id, query, results, created_at)"
                 " VALUES (?, ?, ?, ?)",
-                (query, json.dumps(results, ensure_ascii=False), int(fast_only), _now_iso()),
+                (input_id, query, json.dumps(results, ensure_ascii=False), _now_iso()),
             )
             await db.commit()
 
@@ -76,9 +67,12 @@ class LogService:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 "SELECT s.id, s.memory_id, s.content, s.created_at, s.memory_deleted,"
-                " mv.value_score"
+                " COALESCE(agg.total_score, NULL) AS total_association_score"
                 " FROM save_logs s"
-                " LEFT JOIN memory_values mv ON mv.memory_id = s.memory_id"
+                " LEFT JOIN ("
+                "   SELECT memory_id, SUM(association_score) AS total_score"
+                "   FROM input_memory_links GROUP BY memory_id"
+                " ) agg ON agg.memory_id = s.memory_id"
                 " ORDER BY s.id DESC"
             ) as cursor:
                 rows = await cursor.fetchall()
@@ -89,7 +83,7 @@ class LogService:
                 content=row["content"],
                 created_at=row["created_at"],
                 memory_deleted=bool(row["memory_deleted"]),
-                value_score=row["value_score"],
+                total_association_score=row["total_association_score"],
                 is_garbled=_is_garbled(row["content"]),
             )
             for row in rows
@@ -101,9 +95,12 @@ class LogService:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 "SELECT s.id, s.memory_id, s.content, s.created_at, s.memory_deleted,"
-                " mv.value_score"
+                " COALESCE(agg.total_score, NULL) AS total_association_score"
                 " FROM save_logs s"
-                " LEFT JOIN memory_values mv ON mv.memory_id = s.memory_id"
+                " LEFT JOIN ("
+                "   SELECT memory_id, SUM(association_score) AS total_score"
+                "   FROM input_memory_links GROUP BY memory_id"
+                " ) agg ON agg.memory_id = s.memory_id"
                 " WHERE s.memory_id = ? ORDER BY s.id DESC LIMIT 1",
                 (memory_id,),
             ) as cursor:
@@ -116,7 +113,7 @@ class LogService:
             content=row["content"],
             created_at=row["created_at"],
             memory_deleted=bool(row["memory_deleted"]),
-            value_score=row["value_score"],
+            total_association_score=row["total_association_score"],
             is_garbled=_is_garbled(row["content"]),
         )
 
@@ -125,16 +122,16 @@ class LogService:
         async with aiosqlite.connect(settings.DB_PATH) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT id, query, results, fast_only, created_at"
+                "SELECT id, input_id, query, results, created_at"
                 " FROM query_logs ORDER BY id DESC"
             ) as cursor:
                 rows = await cursor.fetchall()
         return [
             QueryLog(
                 id=row["id"],
+                input_id=row["input_id"],
                 query=row["query"],
                 results=row["results"],
-                fast_only=bool(row["fast_only"]),
                 created_at=row["created_at"],
             )
             for row in rows

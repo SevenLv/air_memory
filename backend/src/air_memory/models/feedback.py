@@ -7,6 +7,7 @@ class FeedbackLog(BaseModel):
     """反馈日志条目。"""
 
     id: int
+    input_id: str | None = None  # 新增：触发反馈的 input_id
     memory_id: str
     valuable: bool
     created_at: str
