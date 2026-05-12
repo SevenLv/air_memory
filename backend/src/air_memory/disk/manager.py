@@ -14,7 +14,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _in_placeholders(ids: list) -> str:
+def _in_placeholders(ids: list[str]) -> str:
     """生成 SQL IN 子句所需的参数占位符字符串（如 '?,?,?'）。
 
     占位符只包含 '?' 字符，不含任何用户数据，配合参数化查询使用，安全无注入风险。
