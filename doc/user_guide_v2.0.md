@@ -63,7 +63,7 @@ graph LR
 | `input_id` | 本次查询输入信息 ID, 用于后续反馈接口 |
 | `content` | 记忆原文内容 |
 | `similarity` | 与查询内容的语义相似度（0.0 至 1.0，越高越相关） |
-| `total_association_score` | 该记忆当前关联评分总量（input_memory_links 中 association_score 之和） |
+| `total_association_score` | 该记忆当前关联评分总量（历次有价值反馈积累的关联分之和） |
 | `association_score` | 当前输入信息与该记忆的关联评分 |
 | `source` | 结果来源: `associated`/`hot`/`cold` |
 | `tier` | 所在层：`hot`（热层）或 `cold`（冷层） |
@@ -178,7 +178,7 @@ sequenceDiagram
 记忆的层归属由系统根据所有记忆的 `total_association_score` 排名自动管理：
 
 - 新记忆存入时默认同时进入热层和冷层（初始 total_association_score = 0）。
-- 每次收到有价值反馈（`valuable=true`）时，对应 `input_memory_links` 关联分提升，total_association_score 随之增加；收到无价值反馈时，关联分降低（至 0 时移除关联），total_association_score 随之减少。
+- 每次收到有价值反馈（`valuable=true`）时，对应关联分提升，total_association_score 随之增加；收到无价值反馈时，关联分降低（至 0 时移除关联），total_association_score 随之减少。
 - TierManager 根据 total_association_score 排名动态调整热层成员；热层始终保留排名靠前的记忆，直至达到内存预算上限。
 
 **反馈记录列表**：
