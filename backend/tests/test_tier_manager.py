@@ -18,12 +18,12 @@ class TestTierManagerRestoreHotTier:
     async def test_restore_hot_tier_loads_high_value_memories(
         self, tier_manager, memory_service, db_path
     ):
-        """启动恢复应将 total_association_score >= PROMOTE_THRESHOLD 的冷层记忆加载到热层。"""
+        """启动恢复应将 total_association_score > 0 的冷层记忆加载到热层。"""
         # 在冷层存储两条记忆
         id1 = await memory_service.save("高价值记忆：机器学习")
         id2 = await memory_service.save("低价值记忆：随机内容")
 
-        # 为 id1 设置高于阈值的关联评分，id2 不设置（score=0.0，低于阈值）
+        # 为 id1 设置关联评分（total_association_score > 0），id2 不设置（score=0.0，无关联记录）
         await insert_input_memory_link(db_path, "input-restore-1", id1, association_score=0.8)
 
         # 执行热层恢复
