@@ -1,92 +1,100 @@
-"""FeedbackService 单元测试：价值分更新边界、Feedback 日志写入、迁移触发条件。"""
+"""FeedbackService 单元测试：关联评分更新、Feedback 日志写入、迁移触发条件。"""
+
+import asyncio
+import uuid
 
 import pytest
 import pytest_asyncio
 import aiosqlite
 
 from air_memory.config import settings
-from tests.conftest import insert_memory_value
+from tests.conftest import insert_input_memory_link
 
 
-async def _save_memory_with_db(memory_service, db_path: str,
-                                content: str, value_score: float = 0.5,
-                                tier: str = "cold") -> str:
-    """存储记忆并在 SQLite 写入 memory_values 记录，模拟完整存储流程。"""
-    from datetime import datetime, timezone
-    memory_id = await memory_service.save(content)
-    now = datetime.now(timezone.utc).isoformat()
-    async with aiosqlite.connect(db_path) as db:
-        await db.execute(
-            "INSERT OR REPLACE INTO memory_values"
-            " (memory_id, value_score, tier, feedback_count, created_at, updated_at)"
-            " VALUES (?, ?, ?, 0, ?, ?)",
-            (memory_id, value_score, tier, now, now),
+class TestFeedbackServiceAssociationScore:
+    """测试关联评分更新逻辑。"""
+
+    @pytest.mark.asyncio
+    async def test_positive_feedback_creates_association_score(
+        self, feedback_service, memory_service, db_path
+    ):
+        """正向反馈应为 input_id+memory_id 创建关联评分（ASSOCIATION_SCORE_STEP）。"""
+        memory_id = await memory_service.save("关联评分创建测试")
+        input_id = str(uuid.uuid4())
+        await feedback_service.submit(input_id, memory_id, valuable=True)
+        total = await feedback_service._get_total_association_score(memory_id)
+        assert total == pytest.approx(settings.ASSOCIATION_SCORE_STEP), (
+            f"期望关联评分为 {settings.ASSOCIATION_SCORE_STEP}，实际 {total}"
         )
-        await db.commit()
-    return memory_id
-
-
-class TestFeedbackServiceValueScore:
-    """测试价值分更新逻辑。"""
 
     @pytest.mark.asyncio
-    async def test_positive_feedback_increases_score(self, feedback_service, memory_service, db_path):
-        """正向反馈应使价值分增加 FEEDBACK_STEP。"""
-        memory_id = await _save_memory_with_db(memory_service, db_path, "正向反馈测试", value_score=0.5)
-        new_score, _ = await feedback_service.submit(memory_id, valuable=True)
-        expected = round(0.5 + settings.FEEDBACK_STEP, 4)
-        assert new_score == expected, f"期望 {expected}，实际 {new_score}"
+    async def test_positive_feedback_accumulates_score(
+        self, feedback_service, memory_service, db_path
+    ):
+        """多次正向反馈应累计关联评分，无上限。"""
+        memory_id = await memory_service.save("累计评分测试")
+        input_id = str(uuid.uuid4())
+        await feedback_service.submit(input_id, memory_id, valuable=True)
+        await feedback_service.submit(input_id, memory_id, valuable=True)
+        total = await feedback_service._get_total_association_score(memory_id)
+        expected = settings.ASSOCIATION_SCORE_STEP * 2
+        assert total == pytest.approx(expected), (
+            f"两次正向反馈后评分应为 {expected}，实际 {total}"
+        )
 
     @pytest.mark.asyncio
-    async def test_negative_feedback_decreases_score(self, feedback_service, memory_service, db_path):
-        """负向反馈应使价值分减少 FEEDBACK_STEP。"""
-        memory_id = await _save_memory_with_db(memory_service, db_path, "负向反馈测试", value_score=0.5)
-        new_score, _ = await feedback_service.submit(memory_id, valuable=False)
-        expected = round(0.5 - settings.FEEDBACK_STEP, 4)
-        assert new_score == expected, f"期望 {expected}，实际 {new_score}"
+    async def test_negative_feedback_deletes_link_when_score_reaches_zero(
+        self, feedback_service, memory_service, db_path
+    ):
+        """负向反馈使关联评分降至 0 时，应删除链接记录，总评分返回 0.0。"""
+        memory_id = await memory_service.save("链接删除测试")
+        input_id = str(uuid.uuid4())
+        await feedback_service.submit(input_id, memory_id, valuable=True)   # score=1.0
+        await feedback_service.submit(input_id, memory_id, valuable=False)  # score→0→删除
+        total = await feedback_service._get_total_association_score(memory_id)
+        assert total == pytest.approx(0.0), f"链接删除后总评分应为 0.0，实际 {total}"
 
     @pytest.mark.asyncio
-    async def test_value_score_upper_bound_is_1_0(self, feedback_service, memory_service, db_path):
-        """价值分不得超过 1.0 上限（边界值测试）。(M3-AC-07)"""
-        # 从 0.95 出发，加 0.1 理论上会超过 1.0，应被截断到 1.0
-        memory_id = await _save_memory_with_db(memory_service, db_path, "上限边界测试", value_score=0.95)
-        new_score, _ = await feedback_service.submit(memory_id, valuable=True)
-        assert new_score == 1.0, f"价值分上限应为 1.0，实际 {new_score}"
+    async def test_negative_feedback_on_no_link_does_nothing(
+        self, feedback_service, memory_service, db_path
+    ):
+        """对无链接记录的记忆提交负向反馈应无异常，总评分仍为 0.0。"""
+        memory_id = await memory_service.save("无链接负向反馈测试")
+        input_id = str(uuid.uuid4())
+        await feedback_service.submit(input_id, memory_id, valuable=False)
+        total = await feedback_service._get_total_association_score(memory_id)
+        assert total == pytest.approx(0.0)
 
     @pytest.mark.asyncio
-    async def test_value_score_lower_bound_is_0_0(self, feedback_service, memory_service, db_path):
-        """价值分不得低于 0.0 下限（边界值测试）。(M3-AC-07)"""
-        # 从 0.05 出发，减 0.1 理论上会低于 0.0，应被截断到 0.0
-        memory_id = await _save_memory_with_db(memory_service, db_path, "下限边界测试", value_score=0.05)
-        new_score, _ = await feedback_service.submit(memory_id, valuable=False)
-        assert new_score == 0.0, f"价值分下限应为 0.0，实际 {new_score}"
+    async def test_association_score_no_upper_bound(
+        self, feedback_service, memory_service, db_path
+    ):
+        """关联评分无上限，多次正向反馈后评分应超过 1.0。(M3-AC-07)"""
+        memory_id = await memory_service.save("无上限测试")
+        input_id = str(uuid.uuid4())
+        for _ in range(3):
+            await feedback_service.submit(input_id, memory_id, valuable=True)
+        total = await feedback_service._get_total_association_score(memory_id)
+        assert total > 1.0, f"三次正向反馈后评分应超过 1.0，实际 {total}"
 
     @pytest.mark.asyncio
-    async def test_value_score_exactly_at_1_0_stays(self, feedback_service, memory_service, db_path):
-        """价值分已为 1.0 时，正向反馈后仍应为 1.0。(M3-AC-07)"""
-        memory_id = await _save_memory_with_db(memory_service, db_path, "上限保持测试", value_score=1.0)
-        new_score, _ = await feedback_service.submit(memory_id, valuable=True)
-        assert new_score == 1.0
+    async def test_get_total_association_score_returns_correct_data(
+        self, feedback_service, memory_service, db_path
+    ):
+        """_get_total_association_score() 应返回多条链接的总关联评分之和。"""
+        memory_id = await memory_service.save("评分查询测试")
+        await insert_input_memory_link(db_path, "input-a", memory_id, association_score=0.7)
+        await insert_input_memory_link(db_path, "input-b", memory_id, association_score=0.5)
+        total = await feedback_service._get_total_association_score(memory_id)
+        assert total == pytest.approx(1.2)
 
     @pytest.mark.asyncio
-    async def test_value_score_exactly_at_0_0_stays(self, feedback_service, memory_service, db_path):
-        """价值分已为 0.0 时，负向反馈后仍应为 0.0。(M3-AC-07)"""
-        memory_id = await _save_memory_with_db(memory_service, db_path, "下限保持测试", value_score=0.0)
-        new_score, _ = await feedback_service.submit(memory_id, valuable=False)
-        assert new_score == 0.0
-
-    @pytest.mark.asyncio
-    async def test_submit_returns_tier(self, feedback_service, memory_service, db_path):
-        """submit() 应返回当前 tier 字符串。"""
-        memory_id = await _save_memory_with_db(memory_service, db_path, "层级返回测试")
-        _, tier = await feedback_service.submit(memory_id, valuable=True)
-        assert tier in ("hot", "cold")
-
-    @pytest.mark.asyncio
-    async def test_submit_nonexistent_memory_raises(self, feedback_service):
-        """对不存在的 memory_id 提交反馈应抛出 ValueError。"""
-        with pytest.raises(ValueError, match="记忆不存在"):
-            await feedback_service.submit("nonexistent-id", valuable=True)
+    async def test_get_total_association_score_returns_zero_for_nonexistent(
+        self, feedback_service
+    ):
+        """不存在的 memory_id 查询总关联评分应返回 0.0。"""
+        total = await feedback_service._get_total_association_score("nonexistent-id")
+        assert total == pytest.approx(0.0)
 
 
 class TestFeedbackServiceLogWriting:
@@ -95,8 +103,9 @@ class TestFeedbackServiceLogWriting:
     @pytest.mark.asyncio
     async def test_feedback_log_written_on_submit(self, feedback_service, memory_service, db_path):
         """提交反馈后，feedback_logs 表应写入一条对应记录。(M3-AC-10)"""
-        memory_id = await _save_memory_with_db(memory_service, db_path, "日志写入测试")
-        await feedback_service.submit(memory_id, valuable=True)
+        memory_id = await memory_service.save("日志写入测试")
+        input_id = str(uuid.uuid4())
+        await feedback_service.submit(input_id, memory_id, valuable=True)
 
         async with aiosqlite.connect(db_path) as db:
             db.row_factory = aiosqlite.Row
@@ -110,8 +119,9 @@ class TestFeedbackServiceLogWriting:
     @pytest.mark.asyncio
     async def test_feedback_log_fields_correct(self, feedback_service, memory_service, db_path):
         """Feedback 日志字段应与操作输入一致：memory_id、valuable、created_at。(M3-AC-10)"""
-        memory_id = await _save_memory_with_db(memory_service, db_path, "字段正确性测试")
-        await feedback_service.submit(memory_id, valuable=True)
+        memory_id = await memory_service.save("字段正确性测试")
+        input_id = str(uuid.uuid4())
+        await feedback_service.submit(input_id, memory_id, valuable=True)
 
         async with aiosqlite.connect(db_path) as db:
             db.row_factory = aiosqlite.Row
@@ -129,9 +139,10 @@ class TestFeedbackServiceLogWriting:
     @pytest.mark.asyncio
     async def test_multiple_feedbacks_write_multiple_logs(self, feedback_service, memory_service, db_path):
         """多次提交反馈应写入多条日志记录。"""
-        memory_id = await _save_memory_with_db(memory_service, db_path, "多次反馈测试")
-        await feedback_service.submit(memory_id, valuable=True)
-        await feedback_service.submit(memory_id, valuable=False)
+        memory_id = await memory_service.save("多次反馈测试")
+        input_id = str(uuid.uuid4())
+        await feedback_service.submit(input_id, memory_id, valuable=True)
+        await feedback_service.submit(input_id, memory_id, valuable=False)
 
         async with aiosqlite.connect(db_path) as db:
             async with db.execute(
@@ -144,8 +155,9 @@ class TestFeedbackServiceLogWriting:
     @pytest.mark.asyncio
     async def test_get_feedback_logs_returns_history(self, feedback_service, memory_service, db_path):
         """get_feedback_logs() 应返回指定记忆的反馈历史。"""
-        memory_id = await _save_memory_with_db(memory_service, db_path, "反馈历史查询测试")
-        await feedback_service.submit(memory_id, valuable=True)
+        memory_id = await memory_service.save("反馈历史查询测试")
+        input_id = str(uuid.uuid4())
+        await feedback_service.submit(input_id, memory_id, valuable=True)
         logs = await feedback_service.get_feedback_logs(memory_id)
         assert len(logs) == 1
         assert logs[0].memory_id == memory_id
@@ -156,63 +168,54 @@ class TestFeedbackServiceMigrationTrigger:
     """测试层间迁移触发条件。"""
 
     @pytest.mark.asyncio
-    async def test_promote_triggered_when_score_reaches_threshold(
+    async def test_promote_triggered_when_positive_feedback_for_cold_memory(
         self, feedback_service, memory_service, db_path
     ):
-        """价值分达到 PROMOTE_THRESHOLD 时（冷层），应触发升级（tier 返回 'hot'）。"""
-        # 设置价值分略低于升级阈值，一次正向反馈后超过
-        score = settings.PROMOTE_THRESHOLD - settings.FEEDBACK_STEP
-        memory_id = await _save_memory_with_db(
-            memory_service, db_path, "升级触发测试", value_score=score, tier="cold"
-        )
-        _, tier = await feedback_service.submit(memory_id, valuable=True)
-        assert tier == "hot", f"价值分达到升级阈值后 tier 应为 'hot'，实际 {tier}"
+        """对冷层记忆提交正向反馈（关联评分达到 PROMOTE_THRESHOLD）时，应触发升级。"""
+        # 保存记忆后降级至冷层（total_score=0）
+        memory_id = await memory_service.save("升级触发测试")
+        await memory_service.demote(memory_id)
+        assert not await memory_service.is_hot(memory_id), "记忆应已降级至冷层"
+
+        # 提交正向反馈：ASSOCIATION_SCORE_STEP=1.0 ≥ PROMOTE_THRESHOLD=0.6 → 触发升级
+        input_id = str(uuid.uuid4())
+        await feedback_service.submit(input_id, memory_id, valuable=True)
+        # 等待 asyncio.create_task 中的 promote 协程执行完成
+        await asyncio.sleep(0.1)
+
+        assert await memory_service.is_hot(memory_id), "关联评分达到阈值后应被升级至热层"
 
     @pytest.mark.asyncio
-    async def test_demote_triggered_when_score_falls_below_threshold(
+    async def test_demote_triggered_when_score_falls_to_zero(
         self, feedback_service, memory_service, db_path
     ):
-        """价值分低于 DEMOTE_THRESHOLD 时（热层），应触发降级（tier 返回 'cold'）。"""
-        # 初始分值恰好等于降级阈值（在热层），一次负向反馈后低于阈值
-        # 例如：DEMOTE_THRESHOLD=0.3，FEEDBACK_STEP=0.1 → 0.3 - 0.1 = 0.2 < 0.3
-        score = settings.DEMOTE_THRESHOLD
-        memory_id = await _save_memory_with_db(
-            memory_service, db_path, "降级触发测试", value_score=score, tier="hot"
-        )
-        # 将记忆放入热层
-        await memory_service.promote(memory_id, value_score=score)
-        _, tier = await feedback_service.submit(memory_id, valuable=False)
-        assert tier == "cold", f"价值分低于降级阈值后 tier 应为 'cold'，实际 {tier}"
+        """热层记忆的关联评分降至 0（低于 DEMOTE_THRESHOLD）时，应触发降级。"""
+        # 保存记忆（初始在热层），预设一条关联链接
+        memory_id = await memory_service.save("降级触发测试")
+        assert await memory_service.is_hot(memory_id), "新记忆应在热层"
+
+        input_id = str(uuid.uuid4())
+        await insert_input_memory_link(db_path, input_id, memory_id, association_score=1.0)
+
+        # 提交负向反馈：score 1.0 - 1.0 = 0 → 链接删除 → total=0 < DEMOTE_THRESHOLD=0.3 → 触发降级
+        await feedback_service.submit(input_id, memory_id, valuable=False)
+        # 等待 asyncio.create_task 中的 demote 协程执行完成
+        await asyncio.sleep(0.1)
+
+        assert not await memory_service.is_hot(memory_id), "关联评分降至 0 后应被降级至冷层"
 
     @pytest.mark.asyncio
-    async def test_no_migration_when_score_stays_within_range(
+    async def test_no_migration_when_hot_memory_gets_positive_feedback(
         self, feedback_service, memory_service, db_path
     ):
-        """价值分在阈值范围内变动时不应触发迁移。"""
-        # 从低于升级阈值的分值出发，一次正向反馈后仍低于升级阈值，不触发升级
-        # PROMOTE_THRESHOLD=0.6，FEEDBACK_STEP=0.1 → 从 0.4 变为 0.5 < 0.6
-        score = settings.PROMOTE_THRESHOLD - settings.FEEDBACK_STEP * 2
-        memory_id = await _save_memory_with_db(
-            memory_service, db_path, "无迁移测试", value_score=score, tier="cold"
-        )
-        _, tier = await feedback_service.submit(memory_id, valuable=True)
-        assert tier == "cold", "价值分未达升级阈值不应迁移"
+        """对已在热层的记忆提交正向反馈，不应触发额外的升级操作（记忆保持在热层）。"""
+        memory_id = await memory_service.save("无迁移测试")
+        assert await memory_service.is_hot(memory_id), "新记忆应在热层"
 
-    @pytest.mark.asyncio
-    async def test_get_memory_value_score_returns_correct_data(
-        self, feedback_service, memory_service, db_path
-    ):
-        """get_memory_value_score() 应返回正确的评分数据。"""
-        memory_id = await _save_memory_with_db(
-            memory_service, db_path, "评分查询测试", value_score=0.7
-        )
-        data = await feedback_service.get_memory_value_score(memory_id)
-        assert data is not None
-        assert data["memory_id"] == memory_id
-        assert data["value_score"] == 0.7
+        # 提交正向反馈：total_score=1.0 ≥ 0.6，但已在热层，不触发 promote
+        input_id = str(uuid.uuid4())
+        await feedback_service.submit(input_id, memory_id, valuable=True)
+        await asyncio.sleep(0.1)
 
-    @pytest.mark.asyncio
-    async def test_get_memory_value_score_returns_none_for_nonexistent(self, feedback_service):
-        """不存在的 memory_id 查询应返回 None。"""
-        data = await feedback_service.get_memory_value_score("nonexistent-id")
-        assert data is None
+        # 记忆应仍在热层，不应被错误迁移
+        assert await memory_service.is_hot(memory_id), "已在热层的记忆应保持在热层"

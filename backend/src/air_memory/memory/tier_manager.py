@@ -50,6 +50,12 @@ class TierManager:
         for memory_id in sorted_ids:
             if self._memory_service.get_hot_memory_mb() >= settings.HOT_MEMORY_BUDGET_MB:
                 break
+            meta = meta_map.get(memory_id, {})
+            tier_in_cold = meta.get("tier", "cold")
+            score = scores.get(memory_id, 0.0)
+            # 跳过冷层中关联评分不足的记忆（tier='hot' 的记忆优先恢复，绕过阈值过滤）
+            if tier_in_cold == "cold" and score < settings.PROMOTE_THRESHOLD:
+                continue
             await self._memory_service.promote(memory_id)
 
     async def check_memory_budget(self) -> None:

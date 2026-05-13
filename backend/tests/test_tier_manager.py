@@ -1,11 +1,14 @@
 """TierManager 单元测试：启动时热层加载、超限降级、容量统计。"""
 
+import asyncio
+
 import pytest
 import pytest_asyncio
 import aiosqlite
 
 from air_memory.config import settings
-from tests.conftest import insert_memory_value
+from air_memory.memory.service import MemoryService
+from tests.conftest import insert_memory_value, insert_input_memory_link
 
 
 class TestTierManagerRestoreHotTier:
@@ -83,14 +86,13 @@ class TestTierManagerRestoreHotTier:
             id_new = await memory_service.save("新记忆（tier=hot）")
             id_high = await memory_service.save("旧高价值冷层记忆")
 
-            # 模拟重启：从热层清空（仅保留冷层数据）
-            await memory_service.demote(id_new, value_score=settings.INITIAL_VALUE_SCORE)
-            await memory_service.demote(id_high, value_score=0.9)
-
-            # 新记忆：tier='hot'（刚存入尚未降级）；旧记忆：tier='cold' 但 value_score 很高
-            await insert_memory_value(db_path, id_new,
-                                      value_score=settings.INITIAL_VALUE_SCORE, tier="hot")
-            await insert_memory_value(db_path, id_high, value_score=0.9, tier="cold")
+            # 模拟重启：
+            # id_new 从热层移除，但保留冷层 tier='hot' 元数据（模拟关机前在热层）
+            await asyncio.to_thread(MemoryService._safe_delete, memory_service._hot_col, id_new)
+            # id_high 正常降级（冷层 tier='cold'），但有高关联评分
+            await memory_service.demote(id_high)
+            await insert_input_memory_link(db_path, "input-priority", id_high,
+                                           association_score=0.9)
 
             # 将预算限制到只能容纳一条记忆
             settings.HOT_MEMORY_BUDGET_MB = memory_service.get_hot_memory_mb() + (2 / 1024)
@@ -98,8 +100,7 @@ class TestTierManagerRestoreHotTier:
             await tier_manager.restore_hot_tier()
 
             # tier='hot' 的新记忆应被优先加载
-            results = await memory_service.query("新记忆", top_k=1, fast_only=True)
-            assert any(m.id == id_new for m in results), "tier='hot' 的新记忆应被优先恢复到热层"
+            assert await memory_service.is_hot(id_new), "tier='hot' 的新记忆应被优先恢复到热层"
         finally:
             settings.HOT_MEMORY_BUDGET_MB = original_budget
 
@@ -139,23 +140,19 @@ class TestTierManagerCheckMemoryBudget:
             settings.HOT_MEMORY_BUDGET_MB = original_budget
 
     @pytest.mark.asyncio
-    async def test_demotes_feedback_count_positive_before_new_memories(
+    async def test_demotes_lowest_score_before_high_score_memories(
         self, tier_manager, memory_service, db_path
     ):
-        """超限驱逐时，有反馈且价值低的记忆应先于从未评价的新记忆被驱逐。"""
+        """超限驱逐时，关联评分低的记忆应先于关联评分高的记忆被驱逐。"""
         original_budget = settings.HOT_MEMORY_BUDGET_MB
         settings.HOT_MEMORY_BUDGET_MB = 0
 
         try:
-            id_new = await memory_service.save("新记忆，无反馈")
-            id_old = await memory_service.save("旧记忆，有负向反馈")
-            await memory_service.promote(id_new, value_score=settings.INITIAL_VALUE_SCORE)
-            await memory_service.promote(id_old, value_score=0.3)
-            # 新记忆：feedback_count=0；旧记忆：feedback_count=3（被多次负反馈）
-            await insert_memory_value(db_path, id_new, value_score=settings.INITIAL_VALUE_SCORE,
-                                      tier="hot", feedback_count=0)
-            await insert_memory_value(db_path, id_old, value_score=0.3,
-                                      tier="hot", feedback_count=3)
+            id_old = await memory_service.save("旧记忆，无高关联评分")
+            id_new = await memory_service.save("新记忆，有高关联评分")
+            # id_new 有高关联评分，应被保留；id_old 无评分（score=0），应被驱逐
+            await insert_input_memory_link(db_path, "input-demote", id_new,
+                                           association_score=0.9)
 
             assert memory_service.get_hot_count() == 2
 
@@ -163,13 +160,9 @@ class TestTierManagerCheckMemoryBudget:
             settings.HOT_MEMORY_BUDGET_MB = memory_service.get_hot_memory_mb() / 2
             await tier_manager.check_memory_budget()
 
-            # 有反馈的低价值旧记忆应被驱逐，新记忆应被保留
-            results = await memory_service.query("旧记忆", top_k=1, fast_only=True)
-            old_in_hot = any(m.id == id_old for m in results)
-            results_new = await memory_service.query("新记忆", top_k=1, fast_only=True)
-            new_in_hot = any(m.id == id_new for m in results_new)
-            assert not old_in_hot, "旧低价值记忆应已从热层驱逐"
-            assert new_in_hot, "新记忆应保留在热层"
+            # 低评分旧记忆应被驱逐，高评分新记忆应被保留
+            assert not await memory_service.is_hot(id_old), "低评分旧记忆应已从热层驱逐"
+            assert await memory_service.is_hot(id_new), "高评分新记忆应保留在热层"
         finally:
             settings.HOT_MEMORY_BUDGET_MB = original_budget
 

@@ -145,7 +145,7 @@ class TestQueryMemoriesAPI:
         data = resp.json()
         assert "memories" in data
         assert "count" in data
-        assert "query_mode" in data
+        assert "input_id" in data
 
     @pytest.mark.asyncio
     async def test_query_memories_missing_query(self, client):
@@ -168,40 +168,39 @@ class TestQueryMemoriesAPI:
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_query_memories_fast_only_mode(self, client):
-        """fast_only=True 时 query_mode 应为 'fast'。"""
+    async def test_query_memories_returns_input_id(self, client):
+        """查询应返回 input_id 字段。"""
         resp = await client.get(
             "/api/v1/memories",
-            params={"query": "快速模式测试", "fast_only": True},
+            params={"query": "查询模式测试"},
         )
         assert resp.status_code == 200
-        assert resp.json()["query_mode"] == "fast"
+        assert "input_id" in resp.json()
 
     @pytest.mark.asyncio
-    async def test_query_memories_deep_mode(self, client):
-        """fast_only=False 时 query_mode 应为 'deep'。"""
+    async def test_query_memories_no_fast_only_param(self, client):
+        """查询接口不再接受 fast_only 参数（额外参数被忽略，返回 200）。"""
         resp = await client.get(
             "/api/v1/memories",
-            params={"query": "深度模式测试", "fast_only": False},
+            params={"query": "参数兼容性测试"},
         )
         assert resp.status_code == 200
-        assert resp.json()["query_mode"] == "deep"
 
     @pytest.mark.asyncio
-    async def test_query_memories_content_in_deep_results(self, client):
-        """深度查询应返回存储时的完整 content 字段。(M3-AC-09)"""
-        content = "API 内容正确性测试：深度模式"
+    async def test_query_memories_content_in_results(self, client):
+        """查询应返回存储时的完整 content 字段。(M3-AC-09)"""
+        content = "API 内容正确性测试：统一配额模式"
         save_resp = await client.post("/api/v1/memories", json={"content": content})
         memory_id = save_resp.json()["memory_id"]
 
         query_resp = await client.get(
             "/api/v1/memories",
-            params={"query": "内容正确性", "fast_only": False, "top_k": 10},
+            params={"query": "内容正确性", "top_k": 10},
         )
         assert query_resp.status_code == 200
         memories = query_resp.json()["memories"]
         target = next((m for m in memories if m["id"] == memory_id), None)
-        assert target is not None, "深度查询应能找到刚存储的记忆"
+        assert target is not None, "查询应能找到刚存储的记忆"
         assert target["content"] == content, (
             f"查询返回的 content 应与存储输入一致，期望={content!r}，实际={target['content']!r}"
         )
@@ -240,7 +239,7 @@ class TestFeedbackMemoryAPI:
 
     @pytest.mark.asyncio
     async def test_feedback_memory_success(self, client):
-        """正常反馈请求应返回 200 和更新后的 value_score。"""
+        """正常反馈请求应返回 200 和 memory_id、message 字段。"""
         save_resp = await client.post("/api/v1/memories", json={"content": "反馈测试"})
         memory_id = save_resp.json()["memory_id"]
         # 等待异步日志写入
@@ -248,22 +247,21 @@ class TestFeedbackMemoryAPI:
 
         fb_resp = await client.post(
             f"/api/v1/memories/{memory_id}/feedback",
-            json={"valuable": True},
+            json={"input_id": "test-input-id", "valuable": True},
         )
         assert fb_resp.status_code == 200
         data = fb_resp.json()
         assert "memory_id" in data
-        assert "value_score" in data
-        assert "tier" in data
+        assert "message" in data
 
     @pytest.mark.asyncio
     async def test_feedback_memory_not_found(self, client):
-        """对不存在的 memory_id 提交反馈应返回 404。"""
+        """对不存在的 memory_id 提交反馈应正常返回 200（服务层不校验记忆是否存在）。"""
         resp = await client.post(
             "/api/v1/memories/nonexistent-id/feedback",
-            json={"valuable": True},
+            json={"input_id": "test-input-id", "valuable": True},
         )
-        assert resp.status_code == 404
+        assert resp.status_code == 200
 
     @pytest.mark.asyncio
     async def test_feedback_missing_valuable(self, client):
@@ -322,31 +320,30 @@ class TestGetFeedbackLogsAPI:
 
 
 # ---------------------------------------------------------------------------
-# GET /api/v1/memories/{memory_id}/value-score 价值评分
+# 关联评分日志字段验证
 # ---------------------------------------------------------------------------
 
-class TestGetValueScoreAPI:
-    """测试 GET /api/v1/memories/{memory_id}/value-score 接口。"""
+class TestAssociationScoreInSaveLogs:
+    """测试存储日志中 total_association_score 字段。"""
 
     @pytest.mark.asyncio
-    async def test_get_value_score_success(self, client):
-        """正常请求应返回 200 和价值评分数据。"""
-        save_resp = await client.post("/api/v1/memories", json={"content": "价值评分查询测试"})
-        memory_id = save_resp.json()["memory_id"]
+    async def test_save_logs_contain_total_association_score_field(self, client):
+        """存储日志应包含 total_association_score 字段（可为 None）。"""
+        await client.post("/api/v1/memories", json={"content": "评分字段测试记忆"})
         await asyncio.sleep(0.1)
 
-        vs_resp = await client.get(f"/api/v1/memories/{memory_id}/value-score")
-        assert vs_resp.status_code == 200
-        data = vs_resp.json()
-        assert data["memory_id"] == memory_id
-        assert "value_score" in data
-        assert "tier" in data
-        assert "feedback_count" in data
+        logs_resp = await client.get("/api/v1/logs/save")
+        assert logs_resp.status_code == 200
+        data = logs_resp.json()
+        assert "logs" in data
+        if data["logs"]:
+            log = data["logs"][0]
+            assert "total_association_score" in log
 
     @pytest.mark.asyncio
-    async def test_get_value_score_not_found(self, client):
-        """查询不存在的 memory_id 价值评分应返回 404。"""
-        resp = await client.get("/api/v1/memories/nonexistent-id/value-score")
+    async def test_value_score_endpoint_removed(self, client):
+        """旧版 value-score 接口已移除，应返回 404。"""
+        resp = await client.get("/api/v1/memories/any-id/value-score")
         assert resp.status_code == 404
 
 

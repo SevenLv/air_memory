@@ -57,23 +57,23 @@ class TestMemoryServiceSave:
 # ---------------------------------------------------------------------------
 
 class TestMemoryServiceDeepQuery:
-    """测试 MemoryService.query() 深度查询模式（fast_only=False）。"""
+    """测试 MemoryService.query() 深度查询模式（热层 + 冷层 + 关联记忆）。"""
 
     @pytest.mark.asyncio
     async def test_deep_query_returns_saved_memory(self, memory_service):
-        """深度查询应能返回刚存储的冷层记忆。"""
+        """查询应能返回刚存储的记忆。"""
         content = "深度查询测试：Python 编程语言"
         memory_id = await memory_service.save(content)
-        results = await memory_service.query("Python 编程", top_k=5, fast_only=False)
+        _, results = await memory_service.query("Python 编程", top_k=5)
         ids = [m.id for m in results]
-        assert memory_id in ids, "深度查询应返回刚存储的记忆"
+        assert memory_id in ids, "查询应返回刚存储的记忆"
 
     @pytest.mark.asyncio
     async def test_deep_query_content_correct(self, memory_service):
-        """深度查询返回记忆的 content 字段应与存储时完全一致。(M3-AC-09)"""
+        """查询返回记忆的 content 字段应与存储时完全一致。(M3-AC-09)"""
         content = "深度查询内容正确性测试：机器学习算法"
         memory_id = await memory_service.save(content)
-        results = await memory_service.query("机器学习", top_k=5, fast_only=False)
+        _, results = await memory_service.query("机器学习", top_k=5)
         target = next((m for m in results if m.id == memory_id), None)
         assert target is not None, "应能找到刚存储的记忆"
         assert target.content == content, (
@@ -82,89 +82,77 @@ class TestMemoryServiceDeepQuery:
 
     @pytest.mark.asyncio
     async def test_deep_query_returns_hot_tier(self, memory_service):
-        """新记忆初始存入热层，深度查询返回的记忆 tier 应为 'hot'。"""
+        """新记忆初始存入热层，查询返回的记忆 tier 应为 'hot'。"""
         content = "热层查询测试内容"
         memory_id = await memory_service.save(content)
-        results = await memory_service.query("热层查询", top_k=5, fast_only=False)
+        _, results = await memory_service.query("热层查询", top_k=5)
         target = next((m for m in results if m.id == memory_id), None)
         assert target is not None
         assert target.tier == "hot"
 
     @pytest.mark.asyncio
     async def test_deep_query_response_time_within_1000ms(self, memory_service):
-        """深度查询响应时间应不超过 1000ms（测试环境宽松阈值）。(M3-AC-05)"""
+        """查询响应时间应不超过 1000ms（测试环境宽松阈值）。(M3-AC-05)"""
         await memory_service.save("响应时间基准内容")
         start = time.perf_counter()
-        await memory_service.query("响应时间测试", top_k=5, fast_only=False)
+        await memory_service.query("响应时间测试", top_k=5)
         elapsed_ms = (time.perf_counter() - start) * 1000
-        assert elapsed_ms < 1000, f"深度查询响应时间 {elapsed_ms:.1f}ms 超过 1000ms 阈值"
+        assert elapsed_ms < 1000, f"查询响应时间 {elapsed_ms:.1f}ms 超过 1000ms 阈值"
 
     @pytest.mark.asyncio
     async def test_deep_query_empty_when_no_data(self, memory_service):
-        """空数据库中执行深度查询应返回空列表。"""
-        results = await memory_service.query("任意查询", top_k=5, fast_only=False)
+        """空数据库中执行查询应返回空列表。"""
+        _, results = await memory_service.query("任意查询", top_k=5)
         assert results == []
 
     @pytest.mark.asyncio
     async def test_deep_query_top_k_limit(self, memory_service):
-        """深度查询返回结果数量不超过 top_k。"""
+        """查询返回结果数量不超过 top_k。"""
         for i in range(5):
             await memory_service.save(f"测试记忆内容 {i}")
-        results = await memory_service.query("测试记忆", top_k=3, fast_only=False)
+        _, results = await memory_service.query("测试记忆", top_k=3)
         assert len(results) <= 3
 
 
 # ---------------------------------------------------------------------------
-# 快速查询测试（仅热层）
+# 查询返回 input_id 测试
 # ---------------------------------------------------------------------------
 
-class TestMemoryServiceFastQuery:
-    """测试 MemoryService.query() 快速查询模式（fast_only=True）。"""
+class TestMemoryServiceQueryReturnInputId:
+    """测试 MemoryService.query() 返回 (input_id, memories) 元组。"""
 
     @pytest.mark.asyncio
-    async def test_fast_query_returns_new_memory(self, memory_service):
-        """新存入的记忆应出现在快速查询结果中（新记忆初始在热层）。"""
-        content = "快速查询测试内容"
-        memory_id = await memory_service.save(content)
-        results = await memory_service.query("快速查询", top_k=5, fast_only=True)
-        ids = [m.id for m in results]
-        assert memory_id in ids, "新记忆应在热层可被快速查询"
+    async def test_query_returns_tuple_with_input_id(self, memory_service):
+        """query() 应返回 (input_id, memories) 元组，input_id 为非空字符串。"""
+        result = await memory_service.query("测试查询", top_k=5)
+        assert isinstance(result, tuple) and len(result) == 2, "query() 应返回长度为 2 的元组"
+        input_id, memories = result
+        assert isinstance(input_id, str) and len(input_id) > 0, "input_id 应为非空字符串"
 
     @pytest.mark.asyncio
-    async def test_fast_query_content_correct_after_promote(self, memory_service):
-        """升级到热层后，快速查询返回的 content 字段应与存储输入完全一致。(M3-AC-09)"""
-        content = "快速查询内容正确性测试：自然语言处理"
-        memory_id = await memory_service.save(content)
-        # 将记忆升级到热层
-        await memory_service.promote(memory_id, value_score=0.8)
-        results = await memory_service.query("自然语言处理", top_k=5, fast_only=True)
-        target = next((m for m in results if m.id == memory_id), None)
-        assert target is not None, "升级后应能在热层找到该记忆"
-        assert target.content == content, (
-            f"快速查询返回 content 应与存储输入一致，期望={content!r}，实际={target.content!r}"
-        )
+    async def test_query_input_id_is_unique_per_call(self, memory_service):
+        """每次 query() 调用应生成不同的 input_id。"""
+        input_id_1, _ = await memory_service.query("查询一", top_k=5)
+        input_id_2, _ = await memory_service.query("查询二", top_k=5)
+        assert input_id_1 != input_id_2, "每次查询应生成唯一的 input_id"
 
     @pytest.mark.asyncio
-    async def test_fast_query_returns_hot_tier(self, memory_service):
-        """快速查询返回的记忆 tier 应为 'hot'。"""
-        content = "热层快速查询记忆"
+    async def test_query_returns_saved_memory_in_results(self, memory_service):
+        """query() 返回的 memories 列表应包含刚存储的记忆。"""
+        content = "新记忆查询测试内容"
         memory_id = await memory_service.save(content)
-        await memory_service.promote(memory_id, value_score=0.8)
-        results = await memory_service.query("热层快速查询", top_k=5, fast_only=True)
-        target = next((m for m in results if m.id == memory_id), None)
-        assert target is not None
-        assert target.tier == "hot"
+        _, memories = await memory_service.query("新记忆查询", top_k=5)
+        ids = [m.id for m in memories]
+        assert memory_id in ids, "新记忆应出现在查询结果中"
 
     @pytest.mark.asyncio
-    async def test_fast_query_response_time_within_1000ms(self, memory_service):
-        """快速查询响应时间应不超过 1000ms（测试环境宽松阈值）。(M3-AC-05)"""
-        content = "快速查询响应时间测试"
-        memory_id = await memory_service.save(content)
-        await memory_service.promote(memory_id, value_score=0.8)
+    async def test_query_response_time_within_1000ms(self, memory_service):
+        """query() 响应时间应不超过 1000ms（测试环境宽松阈值）。(M3-AC-05)"""
+        await memory_service.save("响应时间测试内容")
         start = time.perf_counter()
-        await memory_service.query("响应时间", top_k=5, fast_only=True)
+        await memory_service.query("响应时间", top_k=5)
         elapsed_ms = (time.perf_counter() - start) * 1000
-        assert elapsed_ms < 1000, f"快速查询响应时间 {elapsed_ms:.1f}ms 超过 1000ms 阈值"
+        assert elapsed_ms < 1000, f"查询响应时间 {elapsed_ms:.1f}ms 超过 1000ms 阈值"
 
 
 # ---------------------------------------------------------------------------
