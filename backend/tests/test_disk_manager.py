@@ -1,14 +1,15 @@
 """DiskManager 单元测试：淘汰触发条件、168 小时保护规则、淘汰顺序验证。"""
 
+import asyncio
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch, MagicMock
 
+import aiosqlite
 import pytest
 import pytest_asyncio
-import aiosqlite
 
 from air_memory.config import settings
-from tests.conftest import insert_memory_value
+from tests.conftest import insert_input_memory_link
 
 
 def _hours_ago_iso(hours: int) -> str:
@@ -21,17 +22,33 @@ async def _save_memory_with_db(memory_service, db_path: str,
                                 content: str, value_score: float = 0.5,
                                 tier: str = "cold",
                                 created_hours_ago: int = 0) -> str:
-    """存储记忆并在 SQLite 中写入完整的 memory_values 记录，支持设置创建时间偏移。"""
+    """存储记忆并更新 ChromaDB 冷层元数据的创建时间，以及设置关联评分（用于淘汰排序）。"""
     memory_id = await memory_service.save(content)
     created_at = _hours_ago_iso(created_hours_ago)
-    async with aiosqlite.connect(db_path) as db:
-        await db.execute(
-            "INSERT OR REPLACE INTO memory_values"
-            " (memory_id, value_score, tier, feedback_count, created_at, updated_at)"
-            " VALUES (?, ?, ?, 0, ?, ?)",
-            (memory_id, value_score, tier, created_at, created_at),
+
+    # 更新 ChromaDB 冷层元数据中的 created_at（供 _get_evict_candidates 使用）
+    result = await asyncio.to_thread(
+        memory_service._cold_col.get,
+        ids=[memory_id],
+        include=["documents", "embeddings", "metadatas"],
+    )
+    if result["ids"]:
+        metadata = dict(result["metadatas"][0])
+        metadata["created_at"] = created_at
+        await asyncio.to_thread(
+            memory_service._cold_col.upsert,
+            ids=[memory_id],
+            documents=result["documents"],
+            embeddings=result["embeddings"],
+            metadatas=[metadata],
         )
-        await db.commit()
+
+    # 写入关联评分（用于 total_association_score 排序），仅在 value_score > 0 时设置
+    if value_score > 0:
+        await insert_input_memory_link(
+            db_path, f"input-{memory_id[:8]}", memory_id,
+            association_score=value_score, created_at=created_at,
+        )
     return memory_id
 
 
@@ -201,8 +218,8 @@ class TestDiskManagerEvictionOrder:
 
     @pytest.mark.asyncio
     async def test_lowest_value_score_evicted_first(self, disk_manager, memory_service, db_path):
-        """_get_evict_candidates() 应优先返回 value_score 最低的记忆。"""
-        # 存储两条超过保护期的记忆，价值分不同
+        """_get_evict_candidates() 应优先返回 total_association_score 最低的记忆。"""
+        # 存储两条超过保护期的记忆，关联评分不同
         high_id = await _save_memory_with_db(
             memory_service, db_path, "高价值记忆内容", value_score=0.8,
             created_hours_ago=settings.MEMORY_PROTECT_HOURS + 10
@@ -211,11 +228,13 @@ class TestDiskManagerEvictionOrder:
             memory_service, db_path, "低价值记忆内容", value_score=0.1,
             created_hours_ago=settings.MEMORY_PROTECT_HOURS + 10
         )
+        # 为 high_id 设置高关联评分，low_id 无评分（score=0.0）
+        await insert_input_memory_link(db_path, "input-order", high_id, association_score=0.8)
 
-        # 直接测试淘汰候选排序：低价值应排在前面
+        # 直接测试淘汰候选排序：低评分应排在前面
         candidates = await disk_manager._get_evict_candidates(batch_size=10)
         assert len(candidates) == 2, "应返回 2 个候选"
-        assert candidates[0] == low_id, "value_score 最低的记忆应排在候选列表首位"
+        assert candidates[0] == low_id, "total_association_score 最低的记忆应排在候选列表首位"
 
     @pytest.mark.asyncio
     async def test_older_evicted_first_when_equal_score(self, disk_manager, memory_service, db_path):
@@ -237,21 +256,24 @@ class TestDiskManagerEvictionOrder:
 
     @pytest.mark.asyncio
     async def test_evict_removes_from_chroma_and_sqlite(self, disk_manager, memory_service, db_path):
-        """_evict() 应从 ChromaDB 和 SQLite 中删除记忆。"""
+        """_evict() 应从 ChromaDB 冷层和 SQLite input_memory_links 中删除记忆。"""
         memory_id = await _save_memory_with_db(
             memory_service, db_path, "淘汰操作测试", value_score=0.1,
             created_hours_ago=settings.MEMORY_PROTECT_HOURS + 1
         )
+        # 在 input_memory_links 中插入一条关联记录
+        await insert_input_memory_link(db_path, "input-evict-test", memory_id,
+                                       association_score=0.5)
         assert memory_service.get_cold_count() == 1
 
         await disk_manager._evict(memory_id)
 
         # ChromaDB 中记忆应被删除
         assert memory_service.get_cold_count() == 0
-        # SQLite 中 memory_values 记录应被删除
+        # SQLite input_memory_links 中记录应被删除
         async with aiosqlite.connect(db_path) as db:
             async with db.execute(
-                "SELECT COUNT(*) FROM memory_values WHERE memory_id = ?", (memory_id,)
+                "SELECT COUNT(*) FROM input_memory_links WHERE memory_id = ?", (memory_id,)
             ) as cursor:
                 count = (await cursor.fetchone())[0]
         assert count == 0

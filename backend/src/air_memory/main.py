@@ -27,7 +27,7 @@ from air_memory.mcp.server import init_mcp_services, mcp
 from air_memory.memory.service import MemoryService
 from air_memory.memory.tier_manager import TierManager
 
-APP_VERSION = "1.3.2"
+APP_VERSION = "1.4.0"
 
 # 在 Python 运行时强制 UTF-8 I/O 编码（防御性措施）
 # 注意：PYTHONUTF8=1 必须在 Python 启动前设置（见 start.bat/start.sh）；
@@ -134,6 +134,11 @@ async def lifespan(app: FastAPI):
 
     # 初始化 SQLite 数据库
     await init_db()
+
+    # 执行 Schema 迁移（幂等，已执行的迁移会被跳过）
+    from air_memory.data_migration import DataMigrationManager
+    migration_mgr = DataMigrationManager()
+    await migration_mgr.run_migrations()
 
     # 预热 Embedding 模型（阻塞操作，在线程中执行）
     model = await asyncio.to_thread(SentenceTransformer, settings.EMBEDDING_MODEL)

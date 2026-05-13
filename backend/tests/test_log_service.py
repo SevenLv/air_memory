@@ -1,12 +1,14 @@
 """LogService 单元测试：存储日志写入和查询日志写入。(M3-AC-10)"""
 
 import json
+import uuid
 
 import pytest
 import pytest_asyncio
 import aiosqlite
 
 from air_memory.config import settings
+from tests.conftest import insert_input_memory_link
 
 
 class TestLogServiceSaveLogs:
@@ -120,23 +122,15 @@ class TestLogServiceSaveLogs:
         assert logs[0].id > logs[1].id
 
     @pytest.mark.asyncio
-    async def test_get_save_logs_contains_value_score(self, log_service, db_path):
-        """get_save_logs() 应返回记忆当前 value_score。"""
+    async def test_get_save_logs_contains_total_association_score(self, log_service, db_path):
+        """get_save_logs() 应返回记忆当前 total_association_score。"""
         memory_id = "id-304"
         await log_service.log_save(content="带评分日志", memory_id=memory_id)
-        fixed_iso = "2000-01-01T00:00:00Z"
-        async with aiosqlite.connect(db_path) as db:
-            await db.execute(
-                "INSERT OR REPLACE INTO memory_values "
-                "(memory_id, value_score, tier, feedback_count, created_at, updated_at) "
-                "VALUES (?, ?, 'hot', 0, ?, ?)",
-                (memory_id, 0.88, fixed_iso, fixed_iso),
-            )
-            await db.commit()
+        await insert_input_memory_link(db_path, "input-x", memory_id, association_score=0.88)
         logs = await log_service.get_save_logs()
         target = next((l for l in logs if l.memory_id == memory_id), None)
         assert target is not None
-        assert target.value_score == pytest.approx(0.88)
+        assert target.total_association_score == pytest.approx(0.88)
 
     @pytest.mark.asyncio
     async def test_get_save_log_returns_latest_by_memory_id(self, log_service):
@@ -162,7 +156,7 @@ class TestLogServiceQueryLogs:
     @pytest.mark.asyncio
     async def test_log_query_writes_to_db(self, log_service, db_path):
         """log_query() 应向 query_logs 表写入一条记录。(M3-AC-10)"""
-        await log_service.log_query(query="搜索内容", results=[], fast_only=False)
+        await log_service.log_query(str(uuid.uuid4()), "搜索内容", [])
 
         async with aiosqlite.connect(db_path) as db:
             async with db.execute("SELECT COUNT(*) FROM query_logs") as cursor:
@@ -174,7 +168,7 @@ class TestLogServiceQueryLogs:
     async def test_log_query_query_field_correct(self, log_service, db_path):
         """查询日志的 query 字段应与操作输入一致。(M3-AC-10)"""
         query_text = "深度学习模型推理"
-        await log_service.log_query(query=query_text, results=[], fast_only=False)
+        await log_service.log_query(str(uuid.uuid4()), query_text, [])
 
         async with aiosqlite.connect(db_path) as db:
             db.row_factory = aiosqlite.Row
@@ -187,25 +181,26 @@ class TestLogServiceQueryLogs:
         assert row["query"] == query_text
 
     @pytest.mark.asyncio
-    async def test_log_query_fast_only_field_correct(self, log_service, db_path):
-        """查询日志的 fast_only 字段应与操作输入一致。(M3-AC-10)"""
-        await log_service.log_query(query="快速查询测试", results=[], fast_only=True)
+    async def test_log_query_input_id_field_correct(self, log_service, db_path):
+        """查询日志的 input_id 字段应与操作输入一致。(M3-AC-10)"""
+        test_input_id = str(uuid.uuid4())
+        await log_service.log_query(test_input_id, "input_id字段测试", [])
 
         async with aiosqlite.connect(db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT fast_only FROM query_logs WHERE query = ?", ("快速查询测试",)
+                "SELECT input_id FROM query_logs WHERE query = ?", ("input_id字段测试",)
             ) as cursor:
                 row = await cursor.fetchone()
 
         assert row is not None
-        assert row["fast_only"] == 1, "fast_only=True 应存储为 1"
+        assert row["input_id"] == test_input_id, "input_id 字段应与输入一致"
 
     @pytest.mark.asyncio
     async def test_log_query_results_serialized(self, log_service, db_path):
         """查询日志的 results 应以 JSON 字符串存储。(M3-AC-10)"""
         results = [{"id": "abc", "content": "内容", "similarity": 0.9}]
-        await log_service.log_query(query="结果序列化测试", results=results, fast_only=False)
+        await log_service.log_query(str(uuid.uuid4()), "结果序列化测试", results)
 
         async with aiosqlite.connect(db_path) as db:
             db.row_factory = aiosqlite.Row
@@ -223,7 +218,7 @@ class TestLogServiceQueryLogs:
     @pytest.mark.asyncio
     async def test_log_query_created_at_not_empty(self, log_service, db_path):
         """查询日志的 created_at 字段不应为空。(M3-AC-10)"""
-        await log_service.log_query(query="时间戳测试", results=[], fast_only=False)
+        await log_service.log_query(str(uuid.uuid4()), "时间戳测试", [])
 
         async with aiosqlite.connect(db_path) as db:
             db.row_factory = aiosqlite.Row
@@ -239,7 +234,7 @@ class TestLogServiceQueryLogs:
     @pytest.mark.asyncio
     async def test_get_query_logs_returns_list(self, log_service, db_path):
         """get_query_logs() 应返回 QueryLog 列表。"""
-        await log_service.log_query(query="列表查询测试", results=[], fast_only=False)
+        await log_service.log_query(str(uuid.uuid4()), "列表查询测试", [])
         logs = await log_service.get_query_logs()
         assert isinstance(logs, list)
         assert len(logs) >= 1
@@ -248,18 +243,19 @@ class TestLogServiceQueryLogs:
     async def test_get_query_logs_fields_correct(self, log_service, db_path):
         """get_query_logs() 返回的日志各字段应与写入时一致。(M3-AC-10)"""
         query_text = "字段正确性验证查询"
-        await log_service.log_query(query=query_text, results=[{"id": "x"}], fast_only=True)
+        test_input_id = str(uuid.uuid4())
+        await log_service.log_query(test_input_id, query_text, [{"id": "x"}])
         logs = await log_service.get_query_logs()
         target = next((l for l in logs if l.query == query_text), None)
         assert target is not None
         assert target.query == query_text
-        assert target.fast_only is True
+        assert target.input_id == test_input_id
 
     @pytest.mark.asyncio
     async def test_get_query_logs_ordered_by_id_desc(self, log_service, db_path):
         """get_query_logs() 应按 id 降序返回。"""
-        await log_service.log_query(query="第一次查询", results=[], fast_only=False)
-        await log_service.log_query(query="第二次查询", results=[], fast_only=False)
+        await log_service.log_query(str(uuid.uuid4()), "第一次查询", [])
+        await log_service.log_query(str(uuid.uuid4()), "第二次查询", [])
         logs = await log_service.get_query_logs()
         assert len(logs) >= 2
         assert logs[0].id > logs[1].id

@@ -163,3 +163,20 @@ async def insert_memory_value(db_path: str, memory_id: str, value_score: float,
             (memory_id, value_score, tier, feedback_count, created_at, created_at),
         )
         await db.commit()
+
+
+async def insert_input_memory_link(db_path: str, input_id: str, memory_id: str,
+                                   association_score: float,
+                                   created_at: str = None) -> None:
+    """向 input_memory_links 表插入测试数据，用于设置记忆的关联评分。"""
+    from datetime import datetime, timezone
+    if created_at is None:
+        created_at = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO input_memory_links"
+            " (input_id, memory_id, association_score, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (input_id, memory_id, association_score, created_at, created_at),
+        )
+        await db.commit()

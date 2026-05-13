@@ -4,6 +4,7 @@
 """
 
 import json
+import uuid
 import asyncio
 import os
 import pytest
@@ -109,7 +110,7 @@ class TestLogServiceEncoding:
         query = "查询：最近的中文记忆内容"
         results = [{"id": "test-id", "content": "中文记忆", "similarity": 0.9,
                     "value_score": 0.6, "tier": "hot", "created_at": "2026-04-14"}]
-        await log_service.log_query(query, results, False)
+        await log_service.log_query(str(uuid.uuid4()), query, results)
         logs = await log_service.get_query_logs()
         assert len(logs) > 0
         assert logs[0].query == query, (
@@ -123,7 +124,7 @@ class TestLogServiceEncoding:
         results = [{"id": "mem-001", "content": chinese_content,
                     "similarity": 0.95, "value_score": 0.7, "tier": "cold",
                     "created_at": "2026-04-14T00:00:00+00:00"}]
-        await log_service.log_query("test query", results, False)
+        await log_service.log_query(str(uuid.uuid4()), "test query", results)
         logs = await log_service.get_query_logs()
         assert len(logs) > 0
         parsed = json.loads(logs[0].results)
@@ -138,7 +139,7 @@ class TestLogServiceEncoding:
         results = [{"id": "mem-002", "content": content,
                     "similarity": 0.9, "value_score": 0.6, "tier": "hot",
                     "created_at": "2026-04-14T00:00:00+00:00"}]
-        await log_service.log_query("query", results, False)
+        await log_service.log_query(str(uuid.uuid4()), "query", results)
         logs = await log_service.get_query_logs()
 
         raw_results = logs[0].results
@@ -166,13 +167,15 @@ class TestMCPToolEncoding:
         content = "MCP 查询测试中文记忆内容"
         await memory_service.save(content)
 
-        result_json = await query_memory(content, top_k=5, fast_only=False)
+        result_json = await query_memory(content, top_k=5)
 
         assert isinstance(result_json, str), "query_memory 应返回 JSON 字符串"
         parsed = json.loads(result_json)
-        assert isinstance(parsed, list), "解析后应为列表"
-        if parsed:
-            retrieved_content = parsed[0]["content"]
+        assert isinstance(parsed, dict), "解析后应为字典"
+        assert "memories" in parsed, "结果应包含 memories 字段"
+        memories = parsed["memories"]
+        if memories:
+            retrieved_content = memories[0]["content"]
             assert retrieved_content == content, (
                 f"MCP 查询结果中文损坏：期望 {content!r}，实际 {retrieved_content!r}"
             )
@@ -187,11 +190,12 @@ class TestMCPToolEncoding:
         content = "中文不应被转义为unicode代码点"
         await memory_service.save(content)
 
-        result_json = await query_memory(content, top_k=5, fast_only=False)
+        result_json = await query_memory(content, top_k=5)
         parsed = json.loads(result_json)
-        if parsed:
-            assert parsed[0]["content"] == content, (
-                f"MCP 结果中文损坏：期望 {content!r}，实际 {parsed[0]['content']!r}"
+        memories = parsed.get("memories", [])
+        if memories:
+            assert memories[0]["content"] == content, (
+                f"MCP 结果中文损坏：期望 {content!r}，实际 {memories[0]['content']!r}"
             )
 
 

@@ -40,15 +40,17 @@ async def get_feedback_logs(
     page: int = Query(default=1, ge=1, description="页码"),
     page_size: int = Query(default=20, ge=1, le=100, description="每页条数"),
     memory_id: str | None = Query(default=None, description="记忆 ID 过滤"),
+    input_id: str | None = Query(default=None, description="输入 ID 过滤"),
     start_time: str | None = Query(default=None, description="开始时间（ISO 8601）"),
     end_time: str | None = Query(default=None, description="结束时间（ISO 8601）"),
 ):
-    """查询反馈记录列表，支持时间段、记忆 ID 过滤和分页。"""
+    """查询反馈记录列表，支持时间段、记忆 ID、输入 ID 过滤和分页。"""
     feedback_svc = request.app.state.feedback_service
     logs, total = await feedback_svc.get_all_feedback_logs(
         page=page,
         page_size=page_size,
         memory_id=memory_id,
+        input_id=input_id,
         start_time=start_time,
         end_time=end_time,
     )
