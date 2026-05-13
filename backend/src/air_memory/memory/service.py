@@ -306,7 +306,7 @@ class MemoryService:
                         content=result["documents"][i],
                         similarity=similarity,
                         total_association_score=total_score,
-                        association_score=total_score,
+                        association_score=0.0,
                         source="associated",
                         tier=tier_name,
                         created_at=str(meta.get("created_at", "")),

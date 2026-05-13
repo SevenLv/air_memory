@@ -4,12 +4,12 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch, MagicMock
 
+import aiosqlite
 import pytest
 import pytest_asyncio
-import aiosqlite
 
 from air_memory.config import settings
-from tests.conftest import insert_memory_value, insert_input_memory_link
+from tests.conftest import insert_input_memory_link
 
 
 def _hours_ago_iso(hours: int) -> str:
@@ -22,7 +22,7 @@ async def _save_memory_with_db(memory_service, db_path: str,
                                 content: str, value_score: float = 0.5,
                                 tier: str = "cold",
                                 created_hours_ago: int = 0) -> str:
-    """存储记忆并更新 ChromaDB 冷层元数据和 SQLite memory_values 的创建时间。"""
+    """存储记忆并更新 ChromaDB 冷层元数据的创建时间，以及设置关联评分（用于淘汰排序）。"""
     memory_id = await memory_service.save(content)
     created_at = _hours_ago_iso(created_hours_ago)
 
@@ -43,15 +43,12 @@ async def _save_memory_with_db(memory_service, db_path: str,
             metadatas=[metadata],
         )
 
-    # 同步写入 SQLite memory_values（向后兼容）
-    async with aiosqlite.connect(db_path) as db:
-        await db.execute(
-            "INSERT OR REPLACE INTO memory_values"
-            " (memory_id, value_score, tier, feedback_count, created_at, updated_at)"
-            " VALUES (?, ?, ?, 0, ?, ?)",
-            (memory_id, value_score, tier, created_at, created_at),
+    # 写入关联评分（用于 total_association_score 排序），仅在 value_score > 0 时设置
+    if value_score > 0:
+        await insert_input_memory_link(
+            db_path, f"input-{memory_id[:8]}", memory_id,
+            association_score=value_score, created_at=created_at,
         )
-        await db.commit()
     return memory_id
 
 

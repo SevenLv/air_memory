@@ -8,7 +8,7 @@ import aiosqlite
 
 from air_memory.config import settings
 from air_memory.memory.service import MemoryService
-from tests.conftest import insert_memory_value, insert_input_memory_link
+from tests.conftest import insert_input_memory_link
 
 
 class TestTierManagerRestoreHotTier:
@@ -18,14 +18,13 @@ class TestTierManagerRestoreHotTier:
     async def test_restore_hot_tier_loads_high_value_memories(
         self, tier_manager, memory_service, db_path
     ):
-        """启动恢复应将 value_score >= PROMOTE_THRESHOLD 的冷层记忆加载到热层。"""
+        """启动恢复应将 total_association_score >= PROMOTE_THRESHOLD 的冷层记忆加载到热层。"""
         # 在冷层存储两条记忆
         id1 = await memory_service.save("高价值记忆：机器学习")
         id2 = await memory_service.save("低价值记忆：随机内容")
 
-        # 在 SQLite 中设置 value_score：id1 高于升级阈值，id2 低于
-        await insert_memory_value(db_path, id1, value_score=0.8, tier="cold")
-        await insert_memory_value(db_path, id2, value_score=0.2, tier="cold")
+        # 为 id1 设置高于阈值的关联评分，id2 不设置（score=0.0，低于阈值）
+        await insert_input_memory_link(db_path, "input-restore-1", id1, association_score=0.8)
 
         # 执行热层恢复
         await tier_manager.restore_hot_tier()
@@ -37,11 +36,11 @@ class TestTierManagerRestoreHotTier:
     async def test_restore_hot_tier_skips_low_value_memories(
         self, tier_manager, memory_service, db_path
     ):
-        """启动恢复不应将 value_score < PROMOTE_THRESHOLD 的冷层记忆加载到热层。"""
+        """启动恢复不应将 total_association_score < PROMOTE_THRESHOLD 的冷层记忆加载到热层。"""
         id1 = await memory_service.save("低价值记忆内容")
         # 模拟系统重启：热层被清空（EphemeralClient 不持久化），记忆仍在冷层
-        await memory_service.demote(id1, value_score=0.2)
-        await insert_memory_value(db_path, id1, value_score=0.2, tier="cold")
+        await memory_service.demote(id1)
+        # id1 无关联评分（score=0.0），低于 PROMOTE_THRESHOLD
 
         await tier_manager.restore_hot_tier()
 
@@ -59,8 +58,9 @@ class TestTierManagerRestoreHotTier:
         try:
             id1 = await memory_service.save("预算测试记忆")
             # 模拟系统重启：热层被清空，记忆仍在冷层
-            await memory_service.demote(id1, value_score=0.9)
-            await insert_memory_value(db_path, id1, value_score=0.9, tier="cold")
+            await memory_service.demote(id1)
+            # 为 id1 设置高关联评分，使其满足恢复阈值（但预算为 0 不允许加载）
+            await insert_input_memory_link(db_path, "input-budget", id1, association_score=0.9)
 
             await tier_manager.restore_hot_tier()
 
@@ -112,8 +112,8 @@ class TestTierManagerCheckMemoryBudget:
     async def test_no_demote_when_within_budget(self, tier_manager, memory_service, db_path):
         """热层内存未超限时不应触发降级。"""
         id1 = await memory_service.save("热层记忆内容")
-        await memory_service.promote(id1, value_score=0.8)
-        await insert_memory_value(db_path, id1, value_score=0.8, tier="hot")
+        await memory_service.promote(id1)
+        await insert_input_memory_link(db_path, "input-budget-check", id1, association_score=0.8)
 
         initial_hot_count = memory_service.get_hot_count()
         await tier_manager.check_memory_budget()
@@ -129,8 +129,8 @@ class TestTierManagerCheckMemoryBudget:
 
         try:
             id1 = await memory_service.save("超限测试记忆")
-            await memory_service.promote(id1, value_score=0.8)
-            await insert_memory_value(db_path, id1, value_score=0.8, tier="hot")
+            await memory_service.promote(id1)
+            await insert_input_memory_link(db_path, "input-exceed", id1, association_score=0.8)
 
             assert memory_service.get_hot_count() == 1
             await tier_manager.check_memory_budget()
