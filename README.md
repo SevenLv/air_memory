@@ -9,7 +9,7 @@ Memory System for AI Agent
 
 ## 团队建设计划
 
-所有 AI 在执行本项目任务之前必须阅读 /doc/tbp_v1.1.md, 以了解团队架构和职责分配, 确保能明确知道应该与谁合作.
+所有 AI 在执行本项目任务之前必须阅读 /doc/tbp_v1.2.md, 以了解团队架构和职责分配, 确保能明确知道应该与谁合作.
 
 ---
 
@@ -78,7 +78,7 @@ graph LR
     DOC --> D1["pdd_v1.6.md（产品定义）"]
     DOC --> D2["sad_v1.16.md（系统架构设计）"]
     DOC --> D3["tsr_v1.3.md（技术路线选型）"]
-    DOC --> D4["tbp_v1.1.md（团队建设计划）"]
+    DOC --> D4["tbp_v1.2.md（团队建设计划）"]
     DOC --> D5["srd_v1.3.md（系统需求定义）"]
     DOC --> D6["deploy_guide_v1.1.md（部署手册）"]
     DOC --> D7["user_guide_v2.1.md（用户手册）"]
