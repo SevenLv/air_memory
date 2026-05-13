@@ -283,11 +283,12 @@ class FeedbackService:
         return float(row[0]) if row else 0.0
 
     async def _maybe_migrate(self, memory_id: str, total_score: float) -> None:
-        """根据 total_association_score 决定是否触发层间迁移。"""
+        """根据是否有关联记录决定是否触发层间迁移。"""
         is_hot = await self._memory_service.is_hot(memory_id)
-        if total_score >= settings.PROMOTE_THRESHOLD and not is_hot:
+        has_association = total_score > 0
+        if has_association and not is_hot:
             asyncio.create_task(self._promote(memory_id))
-        elif total_score < settings.DEMOTE_THRESHOLD and is_hot:
+        elif not has_association and is_hot:
             asyncio.create_task(self._demote(memory_id))
 
     async def _promote(self, memory_id: str) -> None:

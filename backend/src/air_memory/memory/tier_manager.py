@@ -32,29 +32,15 @@ class TierManager:
         # 从 SQLite 获取每个记忆的 total_association_score
         scores = await self._get_scores_for_ids(cold_ids)
 
-        # 获取冷层元数据（tier 字段用于优先排序）
-        metadatas = await asyncio.to_thread(
-            self._memory_service.get_cold_metadata, cold_ids
-        )
-        meta_map = {mid: (meta or {}) for mid, meta in zip(cold_ids, metadatas)}
-
-        # 排序：先按 tier='hot' 优先（关机前在热层），再按 total_association_score DESC
-        def sort_key(mid: str):
-            meta = meta_map.get(mid, {})
-            tier_priority = 0 if meta.get("tier") == "hot" else 1
-            score = scores.get(mid, 0.0)
-            return (tier_priority, -score)
-
-        sorted_ids = sorted(cold_ids, key=sort_key)
+        # 排序：按 total_association_score DESC（分高者优先恢复到热层）
+        sorted_ids = sorted(cold_ids, key=lambda mid: -scores.get(mid, 0.0))
 
         for memory_id in sorted_ids:
             if self._memory_service.get_hot_memory_mb() >= settings.HOT_MEMORY_BUDGET_MB:
                 break
-            meta = meta_map.get(memory_id, {})
-            tier_in_cold = meta.get("tier", "cold")
             score = scores.get(memory_id, 0.0)
-            # 跳过冷层中关联评分不足的记忆（tier='hot' 的记忆优先恢复，绕过阈值过滤）
-            if tier_in_cold == "cold" and score < settings.PROMOTE_THRESHOLD:
+            # 无任何关联记录（total_association_score == 0）的记忆留在冷层
+            if score <= 0:
                 continue
             await self._memory_service.promote(memory_id)
 

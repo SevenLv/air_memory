@@ -21,18 +21,6 @@ class Settings:
     # 新记忆保护时长（小时），默认 168 小时（7×24h）
     MEMORY_PROTECT_HOURS: int = int(os.getenv("MEMORY_PROTECT_HOURS", "168"))
 
-    # 热层升级阈值：value_score >= 此值且在冷层时升级
-    PROMOTE_THRESHOLD: float = float(os.getenv("PROMOTE_THRESHOLD", "0.6"))
-    # 热层降级阈值：value_score < 此值且在热层时降级
-    DEMOTE_THRESHOLD: float = float(os.getenv("DEMOTE_THRESHOLD", "0.3"))
-
-    # 初始价值分：与升级阈值保持一致，确保新记忆被视为"值得热层访问"
-    # 设置为 PROMOTE_THRESHOLD 以保证重启恢复及预算驱逐时新记忆不处于劣势
-    INITIAL_VALUE_SCORE: float = float(os.getenv("INITIAL_VALUE_SCORE", "0.6"))
-
-    # 价值分变化步长
-    FEEDBACK_STEP: float = float(os.getenv("FEEDBACK_STEP", "0.1"))
-
     # 关联评分变化步长（每次正向反馈增加、负向反馈减少的量）
     ASSOCIATION_SCORE_STEP: float = float(os.getenv("ASSOCIATION_SCORE_STEP", "1.0"))
 
