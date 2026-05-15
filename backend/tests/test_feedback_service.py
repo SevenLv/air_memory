@@ -4,7 +4,6 @@ import asyncio
 import uuid
 
 import pytest
-import pytest_asyncio
 import aiosqlite
 
 from air_memory.config import settings
@@ -171,33 +170,34 @@ class TestFeedbackServiceMigrationTrigger:
     async def test_promote_triggered_when_positive_feedback_for_cold_memory(
         self, feedback_service, memory_service, db_path
     ):
-        """对冷层记忆提交正向反馈（关联评分达到 PROMOTE_THRESHOLD）时，应触发升级。"""
-        # 保存记忆后降级至冷层（total_score=0）
+        """对冷层记忆提交正向反馈（建立关联）时，应触发升级。"""
+        # 保存记忆后默认在冷层（total_score=0）
         memory_id = await memory_service.save("升级触发测试")
-        await memory_service.demote(memory_id)
         assert not await memory_service.is_hot(memory_id), "记忆应已降级至冷层"
 
-        # 提交正向反馈：ASSOCIATION_SCORE_STEP=1.0 ≥ PROMOTE_THRESHOLD=0.6 → 触发升级
+        # 提交正向反馈：建立关联（total_score>0）→ 触发升级
         input_id = str(uuid.uuid4())
         await feedback_service.submit(input_id, memory_id, valuable=True)
         # 等待 asyncio.create_task 中的 promote 协程执行完成
         await asyncio.sleep(0.1)
 
-        assert await memory_service.is_hot(memory_id), "关联评分达到阈值后应被升级至热层"
+        assert await memory_service.is_hot(memory_id), "建立关联后应被升级至热层"
 
     @pytest.mark.asyncio
     async def test_demote_triggered_when_score_falls_to_zero(
         self, feedback_service, memory_service, db_path
     ):
-        """热层记忆的关联评分降至 0（低于 DEMOTE_THRESHOLD）时，应触发降级。"""
-        # 保存记忆（初始在热层），预设一条关联链接
+        """热层记忆的关联评分降至 0（无关联）时，应触发降级。"""
+        # 保存记忆（初始在冷层），先手动升入热层并预设关联链接
         memory_id = await memory_service.save("降级触发测试")
-        assert await memory_service.is_hot(memory_id), "新记忆应在热层"
+        assert not await memory_service.is_hot(memory_id), "新记忆应在冷层"
 
         input_id = str(uuid.uuid4())
         await insert_input_memory_link(db_path, input_id, memory_id, association_score=1.0)
+        await memory_service.promote(memory_id)
+        assert await memory_service.is_hot(memory_id), "预置后记忆应在热层"
 
-        # 提交负向反馈：score 1.0 - 1.0 = 0 → 链接删除 → total=0 < DEMOTE_THRESHOLD=0.3 → 触发降级
+        # 提交负向反馈：score 1.0 - 1.0 = 0 → 链接删除 → total=0（无关联）→ 触发降级
         await feedback_service.submit(input_id, memory_id, valuable=False)
         # 等待 asyncio.create_task 中的 demote 协程执行完成
         await asyncio.sleep(0.1)
@@ -210,10 +210,15 @@ class TestFeedbackServiceMigrationTrigger:
     ):
         """对已在热层的记忆提交正向反馈，不应触发额外的升级操作（记忆保持在热层）。"""
         memory_id = await memory_service.save("无迁移测试")
-        assert await memory_service.is_hot(memory_id), "新记忆应在热层"
+        assert not await memory_service.is_hot(memory_id), "新记忆应在冷层"
 
-        # 提交正向反馈：total_score=1.0 ≥ 0.6，但已在热层，不触发 promote
+        # 先建立关联并升入热层，构造“已在热层”的前置条件
         input_id = str(uuid.uuid4())
+        await insert_input_memory_link(db_path, input_id, memory_id, association_score=1.0)
+        await memory_service.promote(memory_id)
+        assert await memory_service.is_hot(memory_id), "记忆应已在热层"
+
+        # 再次提交正向反馈：已在热层时不应发生错误迁移
         await feedback_service.submit(input_id, memory_id, valuable=True)
         await asyncio.sleep(0.1)
 

@@ -1,0 +1,1245 @@
+# AIR_Memory 系统架构设计说明书
+
+## 变更记录
+
+| 版本号 | 变更时间 | 变更内容 |
+| --- | --- | --- |
+| 1.0 | 2026-4-9 | 初稿 |
+| 1.1 | 2026-4-9 | 将架构图替换为 Mermaid 图；新增性能指标对运行环境要求分析 |
+| 1.2 | 2026-4-9 | 补充 ChromaDB HNSW 索引内存增长机制及数据管理策略说明 |
+| 1.3 | 2026-4-9 | 引入分级记忆存储架构（热层/冷层）；新增记忆价值反馈接口；新增快速/深度查询模式；更新数据模型、接口规范和性能设计以支持 8GB 内存上限约束 |
+| 1.4 | 2026-4-9 | 新增 Feedback 日志及 Web 价值评分查询功能；新增磁盘容量管理策略（上限 40GB，自动淘汰低价值最旧数据）；更新数据模型、接口规范和研发计划 |
+| 1.5 | 2026-4-9 | 磁盘淘汰新增 7×24h 保护规则（创建时间在 168 小时以内的记忆不得被淘汰）；所有 ASCII 数据流图和目录树替换为 Mermaid 图 |
+| 1.6 | 2026-4-9 | 新增参考文档表；文档目的、系统背景及技术栈章节补充对 SRD v1.0 的引用；技术栈参考版本更新为 tsr_v1.3.md；新增第 13 章：需求分配 |
+| 1.7 | 2026-4-9 | 重写第 12 章研发计划：细化各阶段工作内容，加入单元测试研发计划和系统确认计划，以里程碑形式定义重要节点，并明确每个里程碑的验收标准 |
+| 1.8 | 2026-4-9 | 完善里程碑验收标准：新增记忆数据和日志内容的正确性验证；将所有性能阈值设计为可配置项并更新相关测试标准；新增各里程碑的报告文档输出节点与内容要求（研发执行报告、测试报告、系统确认报告） |
+| 1.9 | 2026-4-10 | 修正新记忆初始层：新记忆存储时同时写入热层和冷层（初始 tier='hot'），确保新记忆可被快速查询；更新 Windows 部署要求，去除强制 WSL2 前置条件 |
+| 1.10 | 2026-4-10 | 新记忆热层稳定性增强：将 INITIAL_VALUE_SCORE 从 0.5 提升至 0.6（= PROMOTE_THRESHOLD），确保重启恢复时新记忆被优先加载；restore_hot_tier 优先恢复 tier='hot' 的记忆；check_memory_budget 驱逐时优先驱逐有反馈的低价值记忆，保护新记忆不被率先清出热层 |
+| 1.11 | 2026-4-10 | 放弃 Docker 部署方案，改为 Python 本机直接运行；FastAPI 统一承载后端 API 与前端静态文件服务；前端预构建产物 dist/ 随仓库分发；自启动由 macOS LaunchAgent / Windows Task Scheduler 替代 Docker restart policy；更新技术栈、部署架构、性能预算、研发计划及需求分配章节 |
+| 1.12 | 2026-4-14 | 新增全局反馈记录列表 API（`GET /api/v1/logs/feedback`，支持 memory_id/时间范围过滤和分页）；新增 `FeedbackLogsWithTotalResponse` 数据模型；补充 `FeedbackService.get_all_feedback_logs()` 方法；`main.py` 启动时对 12 个第三方库子 logger 设置 WARNING 级别（抑制 Windows 日志噪声）；前端 LogsView 新增乱码检测徽章；参考文档更新：PDD v1.3→v1.4，SRD v1.0→v1.1 |
+| 1.13 | 2026-4-15 | 新增 `_ForceUTF8JSONMiddleware` 纯 ASGI 中间件，强制所有 `application/json` 请求的 Content-Type charset 覆写为 `utf-8`，修复 AI 工具调用框架不设置或错误设置 charset 导致中文乱码的问题；更新接口规范说明，移除客户端强制设置 charset 的要求；安全设计章节补充 UTF-8 强制中间件说明 |
+| 1.14 | 2026-5-11 | 新增输入信息关联架构: 查询接口返回 input_id 并采用关联5+热3+冷2配额, 反馈接口新增 input_id 参数并维护输入信息-记忆关联评分, Web UI 新增输入信息列表与详情页, 补充输入信息数据模型与接口规范；移除 fast_only 参数，查询接口统一执行分层配额检索；查询配额改为溢出填充模式；新增 DataMigrationManager 组件与数据升级启动流程；更新 FeedbackView 为关联反馈模型；删除独立关联评分总量 API；明确删除记忆级联范围 |
+| 1.15 | 2026-5-11 | 修正 DataMigrationManager 迁移脚本定义：M002 实际为为 query_logs 新增 input_id 列（替换旧"清理 value_score 字段"描述）；新增 M003（为 feedback_logs 新增 input_id 列）；补充 db.py DDL 说明（memory_values 表已从 DDL 移除，新建数据库不再创建该表）；修正 `_fetch_by_ids_with_similarity` 中 association_score 字段语义（关联记忆返回时 association_score=0.0，total_association_score 为历史关联分总和） |
+| 1.16 | 2026-5-13 | 修订热/冷层划分条件：热层仅保留 input_memory_links 中存在记录（total_association_score > 0）的记忆；新记忆 save() 仅写入冷层（移除热层写入）；restore_hot_tier() 改为加载所有 total_association_score > 0 的记忆；_maybe_migrate() 改为按有无关联记录判断迁移；config.py 移除 PROMOTE_THRESHOLD / DEMOTE_THRESHOLD / INITIAL_VALUE_SCORE / FEEDBACK_STEP；更新参考文档至 PDD v1.6 / SRD v1.3 |
+
+---
+
+## 1. 概述
+
+### 1.1 文档目的
+
+本文档描述 AIR_Memory 系统的整体架构设计，包括系统组件划分、模块职责、数据流设计、接口规范及部署方案，供研发工程师（Neo、Mia）和测试工程师（Sparrow）在研发过程中参考。
+
+### 1.2 参考文档
+
+| 文档标识 | 文档名称 | 版本 |
+| --- | --- | --- |
+| PDD | AIR_Memory 产品定义文档 | v1.6 |
+| SRD | AIR_Memory 系统需求文档 | v1.3 |
+| TSR | AIR_Memory 技术路线选型报告 | v1.3 |
+
+### 1.3 系统背景
+
+AIR_Memory 是一个为 AI Agent 设计的本地部署记忆系统。AI Agent 可通过 AIR_Memory 高效地存储记忆、查询相关记忆，并能对查询结果的价值进行反馈评价。
+
+系统通过分级存储架构（热层/冷层），在 8GB 内存上限和 40GB 磁盘上限约束下最大化有输入信息关联记忆的检索性能。查询接口会为每次输入生成 `input_id` 并按"关联记忆优先 + 热层匹配 + 冷层匹配"溢出填充策略（关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10）返回最多 10 条结果，反馈接口基于 `input_id` 维护输入信息与记忆关联评分。磁盘空间触及上限时系统会自动淘汰关联评分总量最低的最旧数据（创建时间在 168 小时内的记忆受保护不得淘汰）。系统同时向人类提供 Web 管理界面进行记忆查询、删除、日志查看、关联反馈记录查看和输入信息管理。
+
+### 1.4 术语定义
+
+| 术语 | 说明 |
+| --- | --- |
+| AI Agent | 使用本系统进行记忆存储/查询的 AI 客户端 |
+| Memory | AI Agent 存储的记忆条目，以自然语言文本形式存在 |
+| Embedding | 将文本转换为高维向量的过程，用于语义相似度计算 |
+| MCP | Model Context Protocol，Anthropic 推出的 AI Agent 工具调用标准协议 |
+| REST API | 基于 HTTP/JSON 的通用接口协议 |
+| ChromaDB | 嵌入式向量数据库，用于存储和检索记忆向量 |
+| ANN | Approximate Nearest Neighbor，近似最近邻搜索 |
+| 热层（Hot Tier） | 在 `input_memory_links` 中存在至少一条关联记录的记忆的内存存储层（ChromaDB EphemeralClient），支持快速 ANN 查询 |
+| 冷层（Cold Tier） | 无任何输入信息关联记录的记忆的持久化存储层（ChromaDB PersistentClient） |
+| 关联评分总量（Total Association Score） | 衡量记忆价值的指标，即该记忆作为目标的所有 `input_memory_links` 中 `association_score` 之和（`total_association_score = COALESCE(SUM(association_score), 0)`），决定记忆在超出内存预算时的降级顺序 |
+| 输入信息（Input） | 一次查询请求的输入实体，系统为每次查询生成唯一 `input_id` |
+| 输入信息关联分（Association Score） | 输入信息与记忆之间的关联评分，由反馈接口按 `valuable` 增减 |
+| Feedback 日志 | 记录每条记忆每次被 AI Agent 评价的历史（时间/评价结果） |
+| 磁盘淘汰（Disk Eviction） | 磁盘占用接近 40GB 上限时，自动删除关联评分总量最低且创建时间最早的记忆 |
+
+---
+
+## 2. 技术栈
+
+根据 `/doc/tsr_v1.3.md` 确认的技术路线（方案一：Python 生态全栈方案），最终技术栈如下：
+
+| 组件 | 技术选型 | 版本要求 |
+| --- | --- | --- |
+| 后端框架 | Python + FastAPI | Python 3.11+，FastAPI 0.115+ |
+| 记忆存储 | ChromaDB（嵌入式向量数据库） | 0.6+ |
+| Embedding | sentence-transformers（all-MiniLM-L6-v2，本地运行） | 3.x |
+| AI Agent 接口 | MCP Server（mcp Python SDK）+ REST API | mcp 1.x |
+| 前端框架 | Vue.js 3 + TypeScript + Element Plus | Vue 3.4+，Element Plus 2.x |
+| 状态管理 | Pinia | 2.x |
+| 路由 | Vue Router | 4.x |
+| HTTP 客户端 | Axios | 1.x |
+| 部署方式 | Python 本机直接运行（uvicorn） | Python 3.11+ |
+| 前端静态文件服务 | FastAPI StaticFiles（挂载预构建 dist/） | - |
+| 自启动 | macOS LaunchAgent / Windows Task Scheduler | - |
+| 日志存储 | SQLite + aiosqlite | aiosqlite 0.20+ |
+| 后端测试 | pytest + pytest-asyncio + httpx | pytest 8.0+ |
+| 前端测试 | Vitest + Vue Test Utils + @testing-library/vue | Vitest 3.x |
+
+---
+
+## 3. 系统架构总览
+
+### 3.1 架构图
+
+```mermaid
+graph TB
+    subgraph Clients["客户端"]
+        AgentMCP["AI Agent<br/>(MCP 协议)"]
+        AgentREST["AI Agent<br/>(REST API)"]
+        WebUI["Web 管理 UI<br/>(Vue.js 3 + Element Plus)"]
+    end
+
+    subgraph Backend["FastAPI Backend (Python 3.11+)"]
+        MCPServer["MCP Server<br/>(mcp SDK)"]
+        RESTAPI["REST API<br/>/api/v1"]
+        AdminAPI["管理 API<br/>/api/v1/admin"]
+
+        subgraph BizLayer["业务逻辑层"]
+            MemSvc["MemoryService<br/>(记忆存取 + 分级管理)"]
+            FeedbackSvc["FeedbackService<br/>(价值评分 + Feedback日志 + 层间迁移)"]
+            LogSvc["LogService<br/>(操作日志逻辑)"]
+            TierMgr["TierManager<br/>(内存预算管理)"]
+            DiskMgr["DiskManager<br/>(磁盘预算管理 + 自动淘汰)"]
+        end
+
+        subgraph TieredStorage["分级持久化存储"]
+            HotChroma[("热层 ChromaDB<br/>EphemeralClient<br/>高价值记忆<br/>HNSW 常驻内存")]
+            ColdChroma[("冷层 ChromaDB<br/>PersistentClient<br/>普通记忆<br/>磁盘持久化")]
+            SQLite[("SQLite<br/>操作日志 + Feedback日志<br/>价值分 (aiosqlite)")]
+        end
+    end
+
+    AgentMCP -->|MCP Protocol| MCPServer
+    AgentREST -->|HTTP/JSON| RESTAPI
+    WebUI -->|HTTP/JSON| RESTAPI
+    WebUI -->|HTTP/JSON| AdminAPI
+
+    MCPServer --> MemSvc
+    MCPServer --> FeedbackSvc
+    RESTAPI --> MemSvc
+    RESTAPI --> FeedbackSvc
+    RESTAPI --> LogSvc
+    AdminAPI --> MemSvc
+    AdminAPI --> LogSvc
+    AdminAPI --> FeedbackSvc
+
+    MemSvc -->|分层配额检索| HotChroma
+    MemSvc -->|分层配额检索| ColdChroma
+    FeedbackSvc --> SQLite
+    FeedbackSvc -->|提升高价值记忆| HotChroma
+    FeedbackSvc -->|降级低价值记忆| ColdChroma
+    TierMgr --> HotChroma
+    TierMgr --> ColdChroma
+    DiskMgr -->|监控磁盘占用| ColdChroma
+    DiskMgr -->|淘汰低价值最旧数据| ColdChroma
+    LogSvc --> SQLite
+```
+
+### 3.2 组件职责
+
+| 组件 | 职责 |
+| --- | --- |
+| FastAPI Backend | 后端服务入口，提供 REST API 和 MCP 协议接口，协调各业务模块 |
+| MCP Server | 实现 MCP 协议，向 AI Agent 暴露记忆存储、查询和价值反馈工具 |
+| REST API | 提供标准 HTTP 接口，兼容所有 AI Agent 和管理 UI |
+| MemoryService | 记忆存储和查询的核心业务逻辑；执行溢出填充分层配额检索策略（关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10） |
+| FeedbackService | 接收 AI Agent 的价值反馈，更新 `input_memory_links` 关联评分；写入 Feedback 日志；重新计算 `total_association_score` 并驱动热层/冷层之间的记忆迁移 |
+| TierManager | 管控热层内存预算（≤ 6GB），启动时加载所有 `total_association_score > 0` 的记忆至热层（按 `total_association_score DESC` 排序，受内存预算约束），预算超限时优先驱逐关联评分总量最低的记忆 |
+| DiskManager | 监控冷层磁盘占用，接近 40GB 上限时自动淘汰关联评分总量最低且 created_at 最早的记忆；**创建时间在 168 小时（7×24h）以内的记忆受保护，不参与淘汰** |
+| DataMigrationManager | 系统启动时自动检测 SQLite 旧版本 schema（如 memory_values 表、value_score 字段），执行一次性安全数据升级，升级完成后解锁主功能启动；升级失败时记录错误并安全退出 |
+| LogService | 记录 AI Agent 的存储和查询操作日志，写入 SQLite |
+| 热层 ChromaDB (EphemeralClient) | 纯内存向量索引，存储高价值记忆；HNSW 索引常驻 RAM，查询延迟 ≤ 10ms |
+| 冷层 ChromaDB (PersistentClient) | 磁盘持久化向量索引，存储普通记忆；仅在分层配额检索冷层部分时访问，查询延迟不保证 |
+| SQLite | 存储操作日志、Feedback 日志及每条记忆的输入信息关联评分历史 |
+| Vue.js 3 UI | 供人类使用的 Web 管理界面，通过 REST API 与后端通信；支持查看 Feedback 日志和关联评分总量 |
+
+---
+
+## 4. 目录结构
+
+```mermaid
+graph LR
+    Root["air_memory/<br/>仓库根目录"]
+
+    Root --> Backend["backend/<br/>后端服务 Python + FastAPI"]
+    Root --> Frontend["frontend/<br/>前端应用 Vue.js 3 + TypeScript"]
+    Root --> README["README.md<br/>项目说明和目录规划"]
+    Root --> Doc["doc/<br/>项目文档"]
+
+    Backend --> BackendSrc["src/air_memory/<br/>主 Python 包"]
+    Backend --> BackendTests["tests/<br/>后端单元测试"]
+    Backend --> BackendConf["pyproject.toml<br/>requirements.txt"]
+
+    BackendSrc --> MainPy["main.py<br/>FastAPI 应用入口"]
+    BackendSrc --> ApiMod["api/<br/>REST API 路由模块"]
+    BackendSrc --> McpMod["mcp/<br/>MCP Server 模块"]
+    BackendSrc --> MemMod["memory/<br/>记忆存储模块"]
+    BackendSrc --> LogMod["log/<br/>操作日志模块"]
+    BackendSrc --> ModelsMod["models/<br/>Pydantic 数据模型"]
+    BackendSrc --> FeedbackMod["feedback/<br/>价值反馈模块"]
+    BackendSrc --> DiskMod["disk/<br/>磁盘容量管理模块"]
+
+    Frontend --> FrontendSrc["src/<br/>前端源码"]
+    Frontend --> FrontendTests["tests/<br/>前端单元测试"]
+    Frontend --> FrontendConf["package.json<br/>vite.config.ts<br/>tsconfig.json"]
+
+    FrontendSrc --> ApiTs["api/index.ts<br/>HTTP 请求模块"]
+    FrontendSrc --> Components["components/<br/>公共 Vue 组件"]
+    FrontendSrc --> Router["router/index.ts<br/>Vue Router"]
+    FrontendSrc --> Stores["stores/index.ts<br/>Pinia 状态管理"]
+    FrontendSrc --> Views["views/<br/>页面视图"]
+    FrontendSrc --> AppVue["App.vue / main.ts"]
+
+    Doc --> PDD["pdd_v1.6.md<br/>产品定义文档"]
+    Doc --> SRD["srd_v1.3.md<br/>系统需求文档"]
+    Doc --> TSR["tsr_v1.3.md<br/>技术路线选型报告"]
+    Doc --> TBP["tbp_v1.1.md<br/>团队建设计划"]
+    Doc --> SAD["sad_v1.16.md<br/>系统架构设计说明书"]
+```
+
+---
+
+## 5. 模块设计
+
+### 5.1 后端模块划分
+
+#### 5.1.1 `main.py` - 应用入口
+
+- 创建 FastAPI 应用实例
+- 注册所有路由（REST API router）
+- 配置 CORS、异常处理、中间件
+- 应用启动/关闭生命周期事件：**数据迁移前置**：在加载热层记忆和预热模型之前，`DataMigrationManager` 先检测并执行旧版本数据升级；预热 Embedding 模型；初始化热层/冷层 ChromaDB；恢复热层记忆
+- **第三方库日志噪声抑制**：在 import 阶段完成后，对以下 12 个第三方库子 logger 显式设置级别为 `WARNING`，防止向 stderr 输出 INFO 级别日志（在 Windows 环境下可避免 CMD 窗口启动时出现日志闪烁）：`chromadb`、`chromadb.config`、`chromadb.segment`、`sentence_transformers`、`httpx`、`httpcore`、`mcp`、`mcp.server`、`mcp.server.streamable_http`、`fastmcp`、`opentelemetry`、`posthog`
+
+#### 5.1.2 `api/` - REST API 层
+
+- **`router.py`**：统一注册所有 API 子路由，路由前缀 `/api/v1`
+- **`memory.py`**（待实现）：记忆相关接口
+  - `POST /api/v1/memories` - 存储记忆
+  - `GET /api/v1/memories` - 查询记忆（统一执行分层配额检索）
+  - `DELETE /api/v1/memories/{id}` - 删除指定记忆
+  - `POST /api/v1/memories/{id}/feedback` - 提交记忆价值反馈
+  - `GET /api/v1/inputs` - 查询输入信息列表
+  - `GET /api/v1/inputs/{input_id}` - 查询输入信息详情（关联记忆及评分）
+- **`logs.py`**（待实现）：日志查询接口
+  - `GET /api/v1/logs/save` - 查看存储操作日志
+  - `GET /api/v1/logs/query` - 查看查询操作日志
+  - `GET /api/v1/logs/feedback` - 查询反馈记录（支持 `memory_id`、`start_time`/`end_time` 过滤，分页）
+
+#### 5.1.3 `mcp/` - MCP Server 层
+
+- **`server.py`**（待实现）：实现 MCP Server
+  - Tool: `save_memory(content: str)` - 存储记忆
+  - Tool: `query_memory(query: str, top_k: int)` - 查询记忆，返回 `input_id` 及溢出填充分层配额结果（关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10）
+  - Tool: `feedback_memory(input_id: str, memory_id: str, valuable: bool)` - 提交记忆价值反馈并更新输入信息关联评分
+
+#### 5.1.4 `memory/` - 记忆存储层
+
+- **`service.py`**（待实现）：MemoryService 类
+  - 维护两个 ChromaDB 实例：`hot_client`（EphemeralClient，内存）和 `cold_client`（PersistentClient，磁盘）
+  - `save(content: str) -> str`：生成 Embedding，**仅存入冷层**（持久化存储），不再同时写入热层；新记忆 `total_association_score=0`，默认在冷层，首次正向反馈后通过 `_maybe_migrate()` 升入热层；返回 memory_id
+  - `query(query: str, top_k: int) -> list[Memory]`：
+    - 统一执行溢出填充分层配额检索：优先返回输入信息关联记忆（最多 5 条），再补充热层匹配（固定 3 条，若关联不足则热层可补充至关联+热层合计 8 条）和冷层匹配（固定 2 条，若关联+热层合计不足 8 条则冷层补齐至总计 10 条），合并去重后总数最多 10 条
+    - 每次查询生成并返回 `input_id`
+  - `_fetch_by_ids_with_similarity(memory_ids, query_embedding, associated_scores) -> list[Memory]`：内部方法，按 ID 从热层/冷层获取关联记忆并计算与当前查询向量的余弦相似度。**`association_score` 字段语义**：关联记忆在查询响应中 `association_score=0.0`，代表当前新查询（`input_id`）尚未收到任何反馈，与该记忆的关联分为零；`total_association_score` 字段为该记忆历史上所有 `input_memory_links.association_score` 之和，反映其累计历史关联价值
+  - `_promote(memory_id: str)`：将记忆从冷层迁移到热层（total_association_score 排名上升时触发）
+  - `_demote(memory_id: str)`：将记忆从热层迁移回冷层（total_association_score 排名下降或热层容量不足时触发）
+  - `_check_memory_budget()`：检查热层内存占用，超过预算上限（约 6GB）时驱逐记忆：驱逐 total_association_score 最低的热层记忆
+
+- **`tier_manager.py`**（待实现）：TierManager 类
+  - 在服务启动时通过 `LEFT JOIN input_memory_links GROUP BY memory_id` 计算每条记忆的 `total_association_score`，将所有 `total_association_score > 0` 的记忆（即在 `input_memory_links` 中存在至少一条记录的记忆）按总量降序加载至热层（`restore_hot_tier()`），受内存预算约束
+  - 提供 `get_hot_capacity()` 方法：返回当前热层内存占用估算
+  - 提供 `get_tier_stats()` 方法：返回热层/冷层记忆数量及内存占用
+
+#### 5.1.5 `feedback/` - 价值反馈层（新增）
+
+- **`service.py`**（待实现）：FeedbackService 类
+  - `submit(input_id: str, memory_id: str, valuable: bool)`：
+    - 更新 `input_memory_links` 表中的关联评分：`valuable=True` → 建立或增加 `input_id` 与 `memory_id` 的关联分；`valuable=False` → 降低关联分；关联分降至 0 时删除关联记录
+    - 重新计算该记忆的 `total_association_score`（= 所有指向该 `memory_id` 的 `input_memory_links.association_score` 之和）并根据排名触发层间迁移
+    - 向 `feedback_logs` 表写入本次反馈记录（input_id, memory_id, valuable, created_at）
+  - 层间迁移触发逻辑（`_maybe_migrate()`）：根据 `total_association_score` 判断层间迁移——若 `total_score > 0` 且记忆不在热层 → 升入热层；若 `total_score == 0` 且记忆在热层 → 降入冷层；系统维护热层容量限制
+  - `get_feedback_logs(memory_id: str) -> list`：查询指定记忆的反馈历史
+  - `_get_memory_total_association_score(memory_id: str) -> float`：内部方法，计算指定记忆当前关联评分总量（通过 LEFT JOIN + COALESCE(SUM,0) 计算），供层迁移判断使用，不对外暴露独立 API
+  - `get_all_feedback_logs(page, page_size, memory_id?, start_time?, end_time?) -> (list, int)`：全局反馈记录查询，支持按 `memory_id`、`start_time`/`end_time` 过滤和分页，返回当前页记录列表和符合条件的总条数
+  - `list_inputs(page, page_size, start_time?, end_time?) -> (list, int)`：输入信息列表查询
+  - `get_input_detail(input_id: str) -> InputDetail`：查询输入信息详情及其关联记忆评分
+
+#### 5.1.6 `disk/` - 磁盘容量管理层（新增）
+
+- **`manager.py`**（待实现）：DiskManager 类
+  - `get_disk_usage() -> float`：计算冷层 ChromaDB 数据目录及 SQLite 文件的当前磁盘占用（GB）
+  - `check_and_evict()`：检查磁盘占用，若超过 `DISK_BUDGET_GB`（默认 38GB，预留 2GB 安全裕量）：
+    1. 通过 `LEFT JOIN input_memory_links GROUP BY memory_id` 计算每条记忆的 `total_association_score`，按 `total_association_score ASC, created_at ASC` 排序，取出关联评分总量最低且最旧的若干条记忆 ID
+    2. 从冷层 ChromaDB 和 SQLite 相关表中删除这些记忆的全部数据
+    3. 循环执行直到磁盘占用降至安全水位以下（`DISK_SAFE_GB`，默认 35GB）
+  - 在 FastAPI 启动时注册每小时定期执行 `check_and_evict()`
+
+#### 5.1.7 `data_migration.py` - 数据迁移层（新增）
+
+- **`data_migration.py`**（待实现）：DataMigrationManager 类
+  - `run_migrations()`：检查 SQLite schema 版本，按需执行迁移脚本（幂等，已执行过的迁移跳过）
+  - 迁移脚本：M001 - 废弃 `memory_values` 表（将旧 `memory_values` 表重命名为 `_legacy_memory_values`，不删除以防回滚需要）
+  - 迁移脚本：M002 - 为 `query_logs` 表新增 `input_id TEXT` 列（若不存在，允许为空以兼容存量无 input_id 的历史记录）
+  - 迁移脚本：M003 - 为 `feedback_logs` 表新增 `input_id TEXT` 列（若不存在，允许为空以兼容存量无 input_id 的历史记录）
+  - 使用 `schema_migrations` 表记录已执行的迁移（含迁移编号、执行时间）
+
+#### 5.1.7 `log/` - 操作日志层
+
+- **`service.py`**（待实现）：LogService 类
+  - 初始化 SQLite 连接（aiosqlite）
+  - `log_save(content: str, memory_id: str)`：记录存储操作
+  - `log_query(query: str, results: list)`：记录查询操作
+  - `get_save_logs() -> list`：查询存储日志
+  - `get_query_logs() -> list`：查询查询日志
+
+#### 5.1.8 `models/` - 数据模型层
+
+- **`memory.py`**（待实现）：记忆相关 Pydantic 模型
+  - `MemorySaveRequest`、`MemorySaveResponse`
+  - `MemoryQueryRequest`（含 `top_k: int = 10`）、`MemoryQueryResponse`（含 `input_id`）、`Memory`（含 `source`、`association_score`）
+  - `MemoryFeedbackRequest`（含 `input_id: str`、`valuable: bool`）、`MemoryFeedbackResponse`（含 `memory_id: str`、`message: str`）
+- **`log.py`**（待实现）：日志相关 Pydantic 模型
+  - `SaveLog`、`QueryLog`
+- **`feedback.py`**（待实现）：反馈相关 Pydantic 模型
+  - `FeedbackLog`（含 `memory_id`、`valuable`、`created_at`）
+  - `MemoryTotalAssociationScore`（含 `memory_id`、`total_association_score`、`tier`）
+  - `FeedbackLogsWithTotalResponse`（含 `logs: list[FeedbackLog]`、`count: int`（当前页条数）、`total: int`（符合条件的总条数））
+
+### 5.2 前端模块划分
+
+#### 5.2.1 `main.ts` - 应用入口
+
+- 创建 Vue 应用，注册 Element Plus、Pinia、Vue Router
+
+#### 5.2.2 `router/` - 路由层
+
+| 路由 | 组件 | 说明 |
+| --- | --- | --- |
+| `/` | `HomeView` | 记忆查询页面 |
+| `/memories` | `MemoriesView`（待实现） | 记忆管理页面 |
+| `/logs` | `LogsView`（待实现） | 操作日志页面 |
+| `/feedback` | `FeedbackView`（待实现） | 价值评分与 Feedback 日志页面 |
+| `/inputs` | `InputsView`（待实现） | 输入信息管理列表页面 |
+| `/inputs/:input_id` | `InputDetailView`（待实现） | 输入信息详情页面 |
+
+#### 5.2.3 `stores/` - 状态管理层
+
+- `useMemoryStore`（待实现）：管理记忆列表、查询状态
+- `useLogStore`（待实现）：管理日志数据
+- `useInputStore`（待实现）：管理输入信息列表、详情和关联记忆评分
+
+#### 5.2.4 `api/` - 接口调用层
+
+- 封装 Axios 实例，统一设置 `baseURL = /api/v1`
+- `memoryApi`（待实现）：记忆相关接口调用
+- `logApi`（待实现）：日志相关接口调用
+- `inputApi`（待实现）：输入信息相关接口调用
+
+#### 5.2.5 `views/` - 视图层
+
+- `HomeView.vue`：首页（记忆查询功能）
+- `MemoriesView.vue`（待实现）：记忆列表和删除功能
+- `LogsView.vue`（待实现）：操作日志查看功能
+- `FeedbackView.vue`（待实现）：
+  - 显示历次关联反馈记录列表（input_id、memory_id、valuable、created_at）
+  - 支持按 memory_id 或 input_id 过滤，支持时间段筛选和分页
+- `InputsView.vue`（待实现）：输入信息管理列表，支持分页、时间筛选和跳转详情
+- `InputDetailView.vue`（待实现）：展示输入信息关联记忆列表及关联评分
+
+#### 5.2.6 `components/` - 公共组件层
+
+- `MemoryCard.vue`（待实现）：记忆条目展示组件
+- `LogTable.vue`（待实现）：日志表格组件
+
+---
+
+## 6. 数据流设计
+
+### 6.1 记忆存储流程
+
+```mermaid
+sequenceDiagram
+    participant Agent as AI Agent
+    participant API as FastAPI Backend
+    participant MemSvc as MemoryService
+    participant ET as sentence-transformers
+    participant Cold as 冷层 ChromaDB
+    participant Hot as 热层 ChromaDB
+    participant DB as SQLite
+    participant Log as LogService
+
+    Agent->>API: (1) MCP save_memory(content)<br/>或 POST /api/v1/memories
+    API->>MemSvc: (2) save(content)
+    MemSvc->>ET: (3) 生成 Embedding 向量
+    ET-->>MemSvc: embedding vector
+    MemSvc->>Cold: (4) 存入冷层 PersistentClient<br/>新记忆 total_association_score=0（初始无关联，默认在冷层）
+    MemSvc->>DB: (5) 创建 memories 元数据记录<br/>(memory_id, tier=cold, created_at)
+    MemSvc-->>API: memory_id
+    API-->>Agent: {"memory_id":"...", "message":"ok"}
+    API-)Log: (6) asyncio.create_task<br/>log_save(content, memory_id)
+    Log-)DB: (7) 异步写入 save_logs
+```
+
+### 6.2 记忆查询流程
+
+```mermaid
+sequenceDiagram
+    participant Agent as AI Agent
+    participant API as FastAPI Backend
+    participant MemSvc as MemoryService
+    participant ET as sentence-transformers
+    participant Hot as 热层 ChromaDB
+    participant Cold as 冷层 ChromaDB
+    participant Log as LogService
+
+    Agent->>API: (1) MCP query_memory(query, top_k)<br/>或 GET /api/v1/memories?query=...
+    API->>MemSvc: (2) query(query, top_k)
+    MemSvc->>MemSvc: (2.1) 创建 input_id 并查找本次输入语义关联记忆（最多5）
+    MemSvc->>ET: (3) 生成查询 Embedding 向量
+    ET-->>MemSvc: query_vector
+    par 并发搜索
+        MemSvc->>Hot: (4a) 热层 HNSW 搜索（固定3条，若关联不足则补充至关联+热层合计8条）
+        Hot-->>MemSvc: hot_results
+    and
+        MemSvc->>Cold: (4b) 冷层 HNSW 搜索（固定2条，若关联+热层合计不足8条则补齐至总计10条）
+        Cold-->>MemSvc: cold_results
+    end
+    MemSvc->>MemSvc: (5) 组装结果: 关联记忆≤5 + 热层≤(8−关联实际数) + 冷层补齐至10, 合并去重后总数≤10
+    MemSvc-->>API: merged_results
+    API-->>Agent: {"input_id":"...","memories":[...], "count":N}
+    Note over Agent: 响应时间无硬性限制，应尽力在合理时间内返回
+    API-)Log: (6) asyncio.create_task log_query()
+```
+
+### 6.3 记忆价值反馈流程
+
+```mermaid
+sequenceDiagram
+    participant Agent as AI Agent
+    participant API as FastAPI Backend
+    participant FeedSvc as FeedbackService
+    participant DB as SQLite
+    participant TierMgr as TierManager
+
+    Agent->>API: (1) MCP feedback_memory(input_id, memory_id, valuable)<br/>或 POST /api/v1/memories/{id}/feedback
+    API->>FeedSvc: (2) submit(input_id, memory_id, valuable)
+    FeedSvc->>DB: (3) 更新 input_memory_links<br/>valuable=true: +关联分 / 建立关联<br/>valuable=false: -关联分, ≤0则移除关联
+    FeedSvc->>DB: (4) 重新计算 total_association_score<br/>SELECT COALESCE(SUM(association_score),0)<br/>FROM input_memory_links WHERE memory_id=?
+    FeedSvc->>DB: (5) 插入 feedback_logs 记录<br/>(input_id, memory_id, valuable, created_at)
+    FeedSvc->>FeedSvc: (6) 根据 total_association_score 判断层间迁移<br/>total_score > 0 且不在热层 → 升入热层<br/>total_score == 0 且在热层 → 降入冷层
+    alt total_score > 0，记忆不在热层
+        FeedSvc-)TierMgr: 异步 _promote(memory_id)
+    else total_score == 0，记忆在热层
+        FeedSvc-)TierMgr: 异步 _demote(memory_id)
+    end
+    FeedSvc-->>API: ok
+    API-->>Agent: {"memory_id":"...", "message":"ok"}
+```
+
+### 6.4 磁盘淘汰流程
+
+```mermaid
+flowchart TD
+    Start(["DiskManager 触发<br/>每小时定期执行 / 存储操作后触发"])
+    CheckDisk{"当前磁盘占用 >\nDISK_BUDGET_GB (38GB)？"}
+    Skip(["返回，不执行淘汰"])
+    QueryCandidates["从 SQLite 通过 LEFT JOIN input_memory_links 计算候选记忆<br/>total_association_score = COALESCE(SUM(association_score),0)<br/>排序：total_association_score ASC, created_at ASC<br/>过滤：created_at < NOW - 168h（7×24h 保护）"]
+    HasCandidates{"有候选记忆？"}
+    NoCandidate(["无可淘汰记忆<br/>保护规则生效，退出"])
+    DeleteMemory["删除一批低关联评分总量最旧记忆\n→ 冷层 ChromaDB\n→ SQLite input_memory_links\n→ SQLite feedback_logs\n→ SQLite save_logs（标记 memory_deleted=True）"]
+    CheckAgain{"重新统计磁盘占用\n< DISK_SAFE_GB (35GB)？"}
+    Done(["淘汰完成，退出"])
+
+    Start --> CheckDisk
+    CheckDisk -- 否 --> Skip
+    CheckDisk -- 是 --> QueryCandidates
+    QueryCandidates --> HasCandidates
+    HasCandidates -- 否 --> NoCandidate
+    HasCandidates -- 是 --> DeleteMemory
+    DeleteMemory --> CheckAgain
+    CheckAgain -- 是 --> Done
+    CheckAgain -- 否 --> QueryCandidates
+```
+
+### 6.5 管理 UI 操作流程
+
+```mermaid
+flowchart LR
+    Browser["人类<br/>浏览器 Vue.js 3 + Axios"]
+
+    Browser --> Q["GET /api/v1/memories<br/>查询记忆（分层配额检索）"]
+    Browser --> D["DELETE /api/v1/memories/{id}<br/>删除记忆"]
+    Browser --> LS["GET /api/v1/logs/save<br/>查看存储日志"]
+    Browser --> LQ["GET /api/v1/logs/query<br/>查看查询日志"]
+    Browser --> FL["GET /api/v1/memories/{id}/feedback/logs<br/>查看反馈历史"]
+    Browser --> IL["GET /api/v1/inputs<br/>查看输入信息列表"]
+    Browser --> ID["GET /api/v1/inputs/{input_id}<br/>查看输入信息详情"]
+    Browser --> TS["GET /api/v1/admin/tier-stats<br/>热/冷层统计"]
+    Browser --> DS["GET /api/v1/admin/disk-stats<br/>磁盘占用统计"]
+
+    Q & D & LS & LQ & FL & IL & ID & TS & DS --> Backend["FastAPI REST API<br/>MemoryService / LogService<br/>FeedbackService / DiskManager"]
+```
+
+---
+
+## 7. 接口规范
+
+### 7.1 REST API 规范
+
+**基础 URL**：`/api/v1`
+
+**通用成功响应**：
+
+```json
+{
+  "data": {},
+  "message": "ok"
+}
+```
+
+**错误响应**：
+
+```json
+{
+  "detail": "错误描述"
+}
+```
+
+**Content-Type 规范**：
+
+所有 JSON 请求设置 `Content-Type: application/json` 即可，无需显式指定 `charset`。服务端内置 `_ForceUTF8JSONMiddleware` 纯 ASGI 中间件，强制将所有 `application/json` 请求的 charset 覆写为 `utf-8`，确保无论客户端如何设置（或不设置），中文内容始终正确解码。
+
+#### 7.1.1 记忆接口
+
+| 方法 | 路径 | 说明 | 请求体 / 查询参数 | 响应 |
+| --- | --- | --- | --- | --- |
+| POST | `/memories` | 存储记忆 | `{"content": "string"}` | `{"memory_id": "string", "message": "ok"}` |
+| GET | `/memories` | 查询记忆 | Query: `query`, `top_k=10` | `{"input_id":"string","memories":[...], "count": N}` |
+| DELETE | `/memories/{id}` | 删除记忆 | - | `{"message": "ok"}` |
+| POST | `/memories/{id}/feedback` | 提交记忆价值反馈 | `{"input_id":"string","valuable": true\|false}` | `{"memory_id": "string", "message": "ok"}` |
+| GET | `/memories/{id}/feedback/logs` | 查询指定记忆的反馈历史 | Query: `page=1`, `page_size=20` | `{"logs": [...], "count": N}` |
+| GET | `/inputs` | 查询输入信息列表 | Query: `page=1`, `page_size=20`, `start_time?`, `end_time?` | `{"inputs":[...], "count": N, "total": N}` |
+| GET | `/inputs/{input_id}` | 查询输入信息详情 | - | `{"input_id":"string","query":"string","created_at":"...","memories":[...]}` |
+
+**Memory 对象结构**（查询结果）：
+
+```json
+{
+  "id": "uuid4",
+  "content": "记忆原文",
+  "similarity": 0.87,
+  "total_association_score": 0.7,
+  "association_score": 0.0,
+  "source": "associated",
+  "tier": "hot",
+  "created_at": "2026-04-09T10:00:00Z"
+}
+```
+
+> **`association_score` 字段说明**：查询响应中该字段始终为 `0.0`，代表当前查询（`input_id`）与该记忆之间尚无反馈关联分。AI Agent 在调用 `feedback_memory` 提交反馈后，系统将在 `input_memory_links` 表中建立/更新该 `input_id` 与 `memory_id` 的关联分，但已返回的查询响应不会同步更新。`total_association_score` 为该记忆跨所有历史查询的 `association_score` 累计总和，反映其历史关联价值。
+
+**FeedbackLog 对象结构**：
+
+```json
+{
+  "id": 1,
+  "input_id": "uuid4",
+  "memory_id": "uuid4",
+  "valuable": true,
+  "created_at": "2026-04-09T10:05:00Z"
+}
+```
+
+**Input 对象结构**：
+
+```json
+{
+  "input_id": "uuid4",
+  "query": "string",
+  "created_at": "2026-04-09T10:00:00Z"
+}
+```
+
+#### 7.1.2 日志接口
+
+| 方法 | 路径 | 说明 | 响应 |
+| --- | --- | --- | --- |
+| GET | `/logs/save` | 查询存储操作日志 | `{"logs": [...], "count": N}` |
+| GET | `/logs/query` | 查询查询操作日志 | `{"logs": [...], "count": N}` |
+| GET | `/logs/feedback` | 查询反馈记录列表 | `{"logs": [...], "count": N, "total": N}` |
+
+#### 7.1.3 系统接口
+
+| 方法 | 路径 | 说明 | 响应 |
+| --- | --- | --- | --- |
+| GET | `/health` | 健康检查 | `{"status": "ok"}` |
+| GET | `/admin/tier-stats` | 分级存储统计 | `{"hot_count": N, "cold_count": N, "hot_memory_mb": N, "memory_budget_mb": 6144}` |
+| GET | `/admin/disk-stats` | 磁盘占用统计 | `{"disk_used_gb": N, "disk_budget_gb": 40, "disk_safe_gb": 35}` |
+
+### 7.2 MCP 工具规范
+
+| Tool 名称 | 参数 | 说明 |
+| --- | --- | --- |
+| `save_memory` | `content: str` | 存储一条记忆，返回 memory_id |
+| `query_memory` | `query: str`, `top_k: int = 10` | 查询相关记忆并返回 `input_id`；统一采用溢出填充配额策略（关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10） |
+| `feedback_memory` | `input_id: str`, `memory_id: str`, `valuable: bool` | 对指定输入信息中的记忆提交价值反馈，更新输入信息关联评分并根据 total_association_score 排名触发层迁移 |
+
+---
+
+## 8. 数据模型设计
+
+### 8.1 热层记忆数据（ChromaDB EphemeralClient）
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | string | 记忆唯一 ID（UUID4），与冷层保持一致 |
+| `document` | string | 记忆原始文本内容 |
+| `embedding` | float[] | 384 维向量（all-MiniLM-L6-v2） |
+| `metadata.created_at` | string | 创建时间（ISO 8601） |
+| `metadata.tier` | string | 当前所在层：`hot` 或 `cold` |
+
+### 8.2 冷层记忆数据（ChromaDB PersistentClient）
+
+与热层结构相同，所有记忆均在冷层持久化存储。热层是冷层高关联评分总量记忆的内存副本。
+
+> **设计原则**：冷层（PersistentClient）始终持有所有记忆的完整数据，热层（EphemeralClient）是冷层中存在 `input_memory_links` 关联记录（`total_association_score > 0`）的记忆的内存缓存。服务重启时，通过 `LEFT JOIN input_memory_links GROUP BY memory_id` 计算 `total_association_score`，将所有 `total_association_score > 0` 的记忆按降序重建热层。
+
+### 8.3 操作日志（SQLite）
+
+#### 存储操作日志表 `save_logs`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | INTEGER PRIMARY KEY | 自增 ID |
+| `memory_id` | TEXT | 关联的记忆 ID |
+| `content` | TEXT | 存储的原始内容 |
+| `created_at` | TEXT | 存储时间（ISO 8601） |
+| `memory_deleted` | INTEGER | 记忆是否已被删除（0=正常，1=已删除，用于磁盘淘汰标记）|
+
+#### 查询操作日志表 `query_logs`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | INTEGER PRIMARY KEY | 自增 ID |
+| `input_id` | TEXT | 本次查询生成的输入信息 ID |
+| `query` | TEXT | 查询条件 |
+| `results` | TEXT | 查询结果（JSON 序列化） |
+| `created_at` | TEXT | 查询时间（ISO 8601） |
+
+### 8.4 记忆元数据存储说明
+
+> **注**：`memory_values` 表（独立存储 value_score 的表）已废弃并移除。记忆的价值现由 `input_memory_links` 表中的 `association_score` 汇总计算（`total_association_score = COALESCE(SUM(association_score), 0)`），不再单独存储每条记忆的价值分。记忆分层信息（`tier`）存储在 ChromaDB metadata 中。
+>
+> **db.py DDL 变更说明**：`memory_values` 表已从 `db.py` 的 DDL 中移除，新建数据库不再创建该表。对于已存在 `memory_values` 表的旧数据库，由 DataMigrationManager（M001）在系统启动时自动将其重命名为 `_legacy_memory_values` 以保留历史数据供回滚使用。
+
+#### 记忆基础元数据（存储在冷层 ChromaDB metadata）
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `memory_id` | TEXT | 记忆唯一 ID（与 ChromaDB id 一致） |
+| `tier` | TEXT | 当前所在层：`hot` 或 `cold` |
+| `created_at` | TEXT | 记忆创建时间（ISO 8601，用于磁盘淘汰排序） |
+
+### 8.5 Feedback 日志表（SQLite）
+
+#### `feedback_logs`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | INTEGER PRIMARY KEY | 自增 ID |
+| `input_id` | TEXT | 关联的输入信息 ID |
+| `memory_id` | TEXT | 关联的记忆 ID |
+| `valuable` | INTEGER | 评价结果：1=有价值，0=无价值 |
+| `created_at` | TEXT | 评价时间（ISO 8601） |
+
+### 8.6 输入信息表（SQLite）
+
+#### `input_infos`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `input_id` | TEXT PRIMARY KEY | 输入信息唯一 ID（UUID4） |
+| `query` | TEXT | 查询原文 |
+| `created_at` | TEXT | 输入信息创建时间（ISO 8601） |
+
+### 8.7 输入信息关联表（SQLite）
+
+#### `input_memory_links`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | INTEGER PRIMARY KEY | 自增 ID |
+| `input_id` | TEXT | 输入信息 ID |
+| `memory_id` | TEXT | 关联记忆 ID |
+| `association_score` | REAL | 输入信息与记忆关联评分（最小值 0） |
+| `created_at` | TEXT | 关联创建时间（ISO 8601） |
+| `updated_at` | TEXT | 关联最近更新时间（ISO 8601） |
+
+---
+
+## 9. 部署架构
+
+### 9.1 进程架构
+
+```mermaid
+graph TB
+    subgraph Host["宿主机（macOS / Windows）"]
+        subgraph PythonProc["Python 进程（uvicorn，端口 8080）"]
+            FastAPI["FastAPI Backend<br/>REST API + MCP Server"]
+            StaticFiles["StaticFiles 挂载<br/>frontend/dist/（预构建 Vue.js 3）"]
+        end
+        DataChroma["./data/chroma_cold/<br/>ChromaDB 持久化"]
+        DataDB["./data/logs.db<br/>SQLite 日志"]
+        Models["./models/<br/>Embedding 模型缓存（首次运行自动下载）"]
+    end
+
+    Browser["浏览器"] -->|"HTTP :8080 /"| StaticFiles
+    MCPClient["AI Agent MCP"] -->|"HTTP :8080 /mcp"| FastAPI
+    AgentREST["AI Agent REST"] -->|"HTTP :8080 /api/v1"| FastAPI
+    FastAPI --- DataChroma
+    FastAPI --- DataDB
+    FastAPI --- Models
+```
+
+> **说明**：本方案采用单进程架构，由 FastAPI（uvicorn）统一对外暴露端口 8080。前端 Vue.js 3 应用预先构建为静态文件（`frontend/dist/`）并通过 `fastapi.staticfiles.StaticFiles` 挂载，浏览器直接通过 `/` 路径访问 Web 管理界面，API 请求通过相同端口的 `/api/v1` 路径到达后端，无需额外的 Nginx 反向代理层。
+
+### 9.2 端口规划
+
+| 服务 | 监听地址 | 说明 |
+| --- | --- | --- |
+| FastAPI（含前端静态文件） | `0.0.0.0:8080` | Web UI 访问入口 + REST API + MCP 服务 |
+
+### 9.3 持久化存储
+
+| 数据类型 | 默认路径 | 说明 |
+| --- | --- | --- |
+| 冷层记忆向量 | `./data/chroma_cold/` | ChromaDB PersistentClient 数据目录（所有记忆），路径由 `CHROMA_COLD_PATH` 环境变量控制 |
+| 操作日志 + 关联评分 | `./data/logs.db` | SQLite 数据库文件，路径由 `DB_PATH` 环境变量控制 |
+| Embedding 模型缓存 | `./models/` | sentence-transformers 首次运行时自动下载并缓存，路径由 `HF_HOME` 环境变量控制 |
+| 前端静态文件 | `./frontend/dist/` | 预构建的 Vue.js 3 静态文件，路径由 `STATIC_DIR` 环境变量控制 |
+
+> **注意**：热层（EphemeralClient）数据仅存在于内存中，服务重启后由 TierManager 从冷层重建。冷层（PersistentClient）是记忆数据的唯一持久化存储，路径由 `CHROMA_COLD_PATH` 环境变量指定，请确保该目录数据安全。
+
+---
+
+## 10. 性能设计
+
+### 10.1 性能目标
+
+| 操作 | 目标响应时间 | 适用条件 |
+| --- | --- | --- |
+| 记忆存储 | ≤ 100ms | - |
+| 记忆查询 | 无硬性上限 | 统一执行溢出填充分层配额检索（关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10） |
+| 价值反馈 | ≤ 50ms | SQLite 更新 + Feedback 日志写入，层迁移异步执行 |
+| 系统总内存占用 | ≤ 8GB | 热层 + 冷层（当前已加载部分）+ 基础运行时 |
+| 系统磁盘占用 | ≤ 40GB | 冷层 ChromaDB 数据 + SQLite + Embedding 模型缓存（~90MB）；触及上限前自动淘汰低价值最旧数据 |
+
+### 10.2 性能保障措施
+
+| 措施 | 说明 |
+| --- | --- |
+| 模型预热 | FastAPI 启动时（lifespan）预加载 all-MiniLM-L6-v2 模型，避免首次请求冷启动延迟 |
+| 热层 HNSW 常驻内存 | 热层使用 ChromaDB EphemeralClient（纯内存），HNSW 索引无磁盘 I/O，查询延迟 ≤ 10ms |
+| 冷层磁盘访问 | 冷层 PersistentClient 的 HNSW 索引在服务启动时初始化并加载到内存，深度查询直接在内存中搜索 |
+| 异步 I/O | FastAPI 全程使用 async/await，SQLite 使用 aiosqlite 异步操作，避免 I/O 阻塞 |
+| 日志异步写入 | 操作日志写入使用 asyncio.create_task 异步执行，不占用主业务响应时间 |
+| 层迁移异步执行 | 记忆从冷层迁移到热层（或反向）的操作在后台异步执行，不影响反馈接口响应时间 |
+| 向量维度控制 | 使用 384 维向量（all-MiniLM-L6-v2），在精度和性能之间取得平衡 |
+| 磁盘淘汰后台执行 | DiskManager 在后台每小时异步检查，删除操作不占用 API 响应时间 |
+
+### 10.3 分级存储内存预算设计
+
+#### 10.3.1 系统总内存预算（8GB 上限）
+
+| 组件 | 内存分配 | 说明 |
+| --- | --- | --- |
+| Python 运行时 + FastAPI 服务 | ~200MB | 基础运行时开销 |
+| sentence-transformers 模型 + PyTorch | ~490MB | all-MiniLM-L6-v2 + PyTorch CPU 运行时 |
+| 热层 ChromaDB HNSW | **最大 ~6,000MB** | 动态分配，由 TierManager 管控上限 |
+| 冷层 ChromaDB HNSW（常驻内存） | ~200MB（基础）+ 数据增量 | 服务启动时加载，受冷层记忆数量影响 |
+| SQLite + aiosqlite | < 10MB | 极低开销 |
+| **合计** | **≤ 8,000MB** | TierManager 动态平衡热/冷层分配 |
+
+#### 10.3.2 热层容量与记忆条目数对应关系
+
+热层每条记忆约占 2KB（见 sad_v1.2.md §10.3.3 详细分解），在 6GB 热层预算下：
+
+| 热层内存分配 | 最大热层记忆数 | 说明 |
+| --- | --- | --- |
+| 1GB | ~500,000 条 | 轻量级场景 |
+| 2GB | ~1,000,000 条 | 典型生产场景 |
+| 4GB | ~2,000,000 条 | 数据密集场景 |
+| 6GB（上限） | ~3,000,000 条 | 最大配置（8GB RAM 系统） |
+
+> **典型 AI Agent 个人记忆系统**：记忆条目通常在数千至数万条，热层内存增量仅 10～200MB。即使将价值最高的 10 万条记忆全部放入热层，也仅占用约 200MB，远低于 6GB 上限，内存充裕。
+
+#### 10.3.3 TierManager 内存预算执行策略
+
+```
+TierManager 在以下时机检查并调整层分配：
+1. 服务启动时（restore_hot_tier）：通过 LEFT JOIN input_memory_links GROUP BY memory_id 计算每条记忆的
+               total_association_score，将所有 total_association_score > 0 的记忆
+               按 total_association_score DESC 排序，批量加载至热层，
+               直到热层 HNSW 预估内存达到预算上限（默认 6GB）。
+2. 价值反馈触发迁移时（_maybe_migrate）：
+   - 提升（冷→热）：若 total_score > 0 且记忆不在热层；先检查热层剩余预算；
+                   若预算已满，先将热层中 total_association_score 最低的记忆降级至冷层，
+                   再将目标记忆升级。
+   - 降级（热→冷）：若 total_score == 0 且记忆在热层；直接从热层删除，释放内存。
+3. 每小时定期检查：重新计算热层实际内存占用，若超出预算则自动降级多余记忆。
+```
+
+### 10.4 磁盘容量管理设计
+
+#### 10.4.1 磁盘预算分解（40GB 上限）
+
+| 内容 | 空间占用（参考值） | 说明 |
+| --- | --- | --- |
+| sentence-transformers 模型缓存 | ~90MB | 首次启动自动下载，后续无需联网 |
+| 冷层 ChromaDB 数据 | **动态增长**，~2MB / 千条 | 向量（384 维 × 4 bytes）+ 原文 + 元数据 |
+| SQLite（日志 + 价值分 + Feedback 日志） | ~2MB / 万条记录 | 取决于日志和反馈数量 |
+| **有效业务数据上限** | **~39.9GB** | 40GB 上限 - 基础开销 ~90MB |
+
+> **在 39.9GB 业务数据上限内，冷层最多可存储约 2,000 万条记忆**（每千条 ~2MB）。对于 AI Agent 个人记忆系统，这已远超典型使用量，磁盘淘汰机制通常不会频繁触发。
+
+#### 10.4.2 磁盘淘汰策略
+
+```
+淘汰目标：total_association_score 最低 且 created_at 最早 的冷层记忆
+
+安全水位：DISK_SAFE_GB = 35GB（淘汰后目标磁盘占用，留 5GB 缓冲区间）
+触发水位：DISK_BUDGET_GB = 38GB（开始淘汰的阈值，预留 2GB 应对突发写入）
+
+【7×24h 保护规则】
+  创建时间在 168 小时以内的记忆不得被淘汰，候选集 SQL：
+    WHERE created_at < datetime('now', '-168 hours')
+  目的：防止系统长期运行后低关联评分总量记忆数量极少时，最新记忆被误删。
+
+淘汰顺序（候选集查询 SQL）：
+  SELECT m.memory_id,
+         COALESCE(SUM(l.association_score), 0) AS total_association_score,
+         m.created_at
+  FROM memories m
+  LEFT JOIN input_memory_links l ON m.memory_id = l.memory_id
+  GROUP BY m.memory_id
+  WHERE m.created_at < datetime('now', '-168 hours')
+  ORDER BY total_association_score ASC, m.created_at ASC
+  LIMIT :batch_size;
+  → 先删关联评分总量最低的记忆，同等评分下先删最旧的记忆
+  → 168 小时以内的记忆不参与排序候选
+
+淘汰范围：
+  - 从冷层 ChromaDB PersistentClient 删除向量和文档
+  - 从 SQLite input_memory_links 删除相关关联记录
+  - 从 SQLite feedback_logs 删除相关反馈历史
+  - 从 SQLite save_logs 中保留（仅标记 memory_deleted=True，保留日志记录完整性）
+  
+注意：热层中的记忆理论上不参与磁盘淘汰（热层数据不持久化到磁盘）。
+     若热层记忆也需要从冷层永久删除，应先将其从热层降级，再执行磁盘淘汰。
+```
+
+### 10.5 性能指标对运行环境的要求分析
+
+（详见 sad_v1.2.md §10.3，以下仅列出与分级存储相关的更新部分）
+
+#### 10.5.1 响应时间预算更新
+
+**记忆查询（分层配额检索：溢出填充模式，关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10）**：
+
+| 步骤 | 组件 | 典型耗时 |
+| --- | --- | --- |
+| 文本 Embedding 推理 | sentence-transformers | 15 ~ 60ms |
+| 热层 HNSW 向量检索（并发） | ChromaDB EphemeralClient | 1 ~ 5ms |
+| 冷层 HNSW 向量检索（并发） | ChromaDB PersistentClient | 10 ~ 100ms |
+| 结果合并 + 序列化 | Python + Pydantic v2 | 1 ~ 10ms |
+| **合计（最坏情况）** | | **~175ms**（无硬性上限） |
+
+#### 10.5.2 运行环境最低配置汇总（更新）
+
+| 资源 | 最低配置 | 推荐配置 |
+| --- | --- | --- |
+| CPU | 2 核 / 2.0GHz（x86_64 或 ARM64） | 4 核 / 3.0GHz x86_64 |
+| RAM | **8GB**（系统总内存上限） | 16GB（为操作系统和其他进程保留充足余量） |
+| 磁盘（可用） | **40GB**（系统磁盘上限） | 50GB（留余量应对突发增长） |
+| 操作系统 | Linux（64 位）/ macOS 12+ / Windows 10+ | Linux（64 位） |
+| Python | **Python 3.11+** | Python 3.11+ |
+| 网络 | 首次启动需能访问 HuggingFace Hub（下载 Embedding 模型 ~90MB） | - |
+
+> **重要说明**：系统以 8GB 为内存上限、40GB 为磁盘上限设计。在 8GB RAM 的宿主机上，AIR_Memory 进程内存上限配置为 8GB，其中 ~6GB 分配给热层 ChromaDB HNSW，~2GB 用于运行时基础组件。磁盘侧，DiskManager 在占用超过 38GB 时自动淘汰低价值最旧数据，始终保持在 40GB 以内。若宿主机还运行其他进程，建议配置 16GB RAM 和 50GB 可用磁盘空间以避免资源竞争。
+
+---
+
+## 11. 安全设计
+
+| 安全措施 | 说明 |
+| --- | --- |
+| 本地部署 | 系统默认仅监听本地端口，不向公网暴露 |
+| 输入校验 | 所有 API 输入通过 Pydantic v2 严格校验 |
+| CORS 配置 | 前端与后端同端口同源（FastAPI StaticFiles），无跨域访问需求；若 AI Agent 来自其他端口，需在 `CORS_ORIGINS` 中配置允许源 |
+| 数据持久化 | 数据文件存储在宿主机本地目录（`./data/`），进程重启不丢失数据 |
+| UTF-8 强制中间件 | `_ForceUTF8JSONMiddleware` 纯 ASGI 中间件在请求进入路由前将所有 `application/json` 请求的 charset 强制覆写为 `utf-8`，防止 AI 工具调用框架（如 Claude tool_call）不设置或错误设置 charset 导致中文乱码；根据 JSON RFC 8259，UTF-8 为 JSON 默认编码，此行为符合标准 |
+
+---
+
+## 12. 研发计划
+
+### 12.1 里程碑总览
+
+```mermaid
+graph LR
+    M1["M1\n后端服务就绪"] --> M2["M2\n管理界面就绪"]
+    M1 --> M3["M3\n单元测试就绪"]
+    M1 --> M4["M4\n部署配置就绪"]
+    M2 --> M3
+    M2 --> M5["M5\n文档就绪"]
+    M3 --> M6["M6\n系统确认完成"]
+    M4 --> M5
+    M4 --> M6
+    M5 --> M6
+```
+
+| 里程碑 | 名称 | 主要负责人 | 前置里程碑 |
+| --- | --- | --- | --- |
+| M1 | 后端服务就绪 | Neo | - |
+| M2 | 管理界面就绪 | Mia | M1 |
+| M3 | 单元测试就绪 | Sparrow | M1、M2 |
+| M4 | 部署配置就绪 | Neo | M1 |
+| M5 | 文档就绪 | Nia | M4 |
+| M6 | 系统确认完成 | Wii | M3、M5 |
+
+---
+
+### 12.2 里程碑详情
+
+#### 12.2.1 M1 — 后端服务就绪
+
+**目标**：完成所有后端业务模块、REST API 和 MCP Server 的研发，使后端服务能够独立启动并通过接口调用验证。
+
+**工作内容**
+
+| 编号 | 工作内容 | 负责人 | 关联需求 |
+| --- | --- | --- | --- |
+| M1-01 | 实现 `MemoryService`：热层/冷层 ChromaDB 存储与统一分层配额查询、向量 Embedding | Neo | FR-API-002, FR-API-003, PR-001 |
+| M1-02 | 实现 `TierManager`：系统启动时按 total_association_score 批量加载热层、内存预算管控、超限降级 | Neo | PR-006, PR-007, PR-008 |
+| M1-03 | 实现 `FeedbackService`：价值评分更新、Feedback 日志写入、层间迁移触发 | Neo | FR-API-006, FR-API-007 |
+| M1-04 | 实现 `DiskManager`：磁盘占用监控、低价值最旧数据自动淘汰、168 小时保护规则 | Neo | PR-005, PR-009, PR-010, PR-011 |
+| M1-05 | 实现 `LogService`：存储操作日志与查询操作日志写入 SQLite（aiosqlite） | Neo | FR-UI-003, FR-UI-004 |
+| M1-06 | 实现完整 REST API（`/api/v1/memories`、`/api/v1/inputs`、`/api/v1/logs`、`/api/v1/admin`，含所有子路由） | Neo | FR-API-001, FR-UI-001~008 |
+| M1-07 | 实现 MCP Server（`save_memory`、`query_memory`、`feedback_memory` 三个工具） | Neo | FR-API-001~003, FR-API-006~008 |
+| M1-08 | 将所有性能阈值设计为可配置项，通过环境变量或配置文件指定，默认值与 SRD v1.3 要求一致；可配置项包括：存储响应时间上限（默认 100ms）、热层内存预算（默认 6GB）、磁盘触发水位（默认 38GB）、磁盘安全水位（默认 35GB）、磁盘上限（默认 40GB）、新记忆保护时长（默认 168 小时）；**注意**：`config.py` 中原有的 `PROMOTE_THRESHOLD`、`DEMOTE_THRESHOLD`、`INITIAL_VALUE_SCORE`、`FEEDBACK_STEP` 配置项已移除，层迁移改为按有无关联记录（`total_association_score > 0`）判断 | Neo | PR-001, PR-004~011 |
+| M1-09 | 在 M1 完成后输出《M1 阶段研发执行报告》，内容包含：各工作条目完成情况、验收标准达成情况、遗留问题清单及对后续里程碑的影响评估 | Neo | - |
+
+**验收标准**
+
+| 编号 | 验收标准 |
+| --- | --- |
+| M1-AC-01 | 后端服务能够正常启动，所有模块初始化无报错，Embedding 模型预热完成 |
+| M1-AC-02 | `POST /api/v1/memories` 接口能正确接收记忆内容并返回 `memory_id`；端到端响应时间在预热后不超过配置的存储响应时间阈值（默认 100ms，满足 PR-001） |
+| M1-AC-03 | `GET /api/v1/memories` 执行溢出填充分层配额检索（关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10），结果合并去重（满足 FR-API-003） |
+| M1-AC-04 | `GET /api/v1/memories` 返回 `input_id`，溢出填充配额结果正确（满足 FR-API-003） |
+| M1-AC-05 | `POST /api/v1/memories/{id}/feedback` 能正确更新 input_memory_links 关联评分，重新计算 total_association_score，并根据排名变化触发异步层间迁移（满足 FR-API-006, FR-API-007） |
+| M1-AC-06 | `DELETE /api/v1/memories/{id}` 能同时从热层、冷层 ChromaDB 及 SQLite 关联表中删除该记忆的所有数据（满足 FR-UI-002） |
+| M1-AC-07 | MCP Server 正确暴露 `save_memory`、`query_memory`、`feedback_memory` 三个工具（满足 FR-API-001） |
+| M1-AC-08 | DiskManager 在磁盘占用超过触发水位（38GB）时能正确触发淘汰，且不淘汰创建时间在 168 小时以内的记忆（满足 PR-009~011） |
+| M1-AC-09 | 所有 API 请求输入均通过 Pydantic v2 严格校验，非法输入返回 422 状态码 |
+| M1-AC-10 | 操作日志和 Feedback 日志正确写入 SQLite，可通过日志查询接口获取 |
+| M1-AC-11 | 记忆数据正确性验证：存储一条记忆后，通过查询接口检索该记忆，返回结果中 `content` 字段与存储时提交的原始文本完全一致 |
+| M1-AC-12 | 日志内容正确性验证：存储日志中的 `memory_id`、原始内容、时间戳字段与实际操作数据一致；查询日志中的查询条件和返回结果列表与实际操作一致；Feedback 日志中的 `memory_id`、`valuable` 字段和时间戳与提交的反馈数据一致 |
+| M1-AC-13 | M1 阶段研发执行报告已输出，各工作条目均有明确的完成状态记录 |
+
+---
+
+#### 12.2.2 M2 — 管理界面就绪
+
+**目标**：完成 Web 管理界面所有页面视图的研发，使人类用户能够通过浏览器访问并操作系统的全部管理功能。
+
+**工作内容**
+
+| 编号 | 工作内容 | 负责人 | 关联需求 |
+| --- | --- | --- | --- |
+| M2-01 | 实现 `MemoriesView`：记忆查询（统一执行分层配额检索）与指定记忆删除 | Mia | FR-UI-001, FR-UI-002 |
+| M2-02 | 实现 `LogsView`：存储操作日志查看（时间、原始内容）与查询操作日志查看（时间、条件、模式、结果） | Mia | FR-UI-003, FR-UI-004 |
+| M2-03 | 实现 `FeedbackView`：查看历次关联反馈记录，支持按 memory_id/input_id 和时间段筛选，分页展示 | Mia | FR-UI-005 |
+| M2-04 | 实现 `InputsView` 与 `InputDetailView`：输入信息列表、详情及关联记忆评分展示 | Mia | FR-UI-007, FR-UI-008 |
+| M2-05 | 实现分级存储统计面板（热/冷层记忆数量、内存占用、磁盘占用） | Mia | PR-004, PR-005 |
+| M2-06 | 实现 Pinia Store（`useMemoryStore`、`useLogStore`、`useInputStore`）和 Axios API 调用层 | Mia | - |
+| M2-07 | 实现公共组件：`MemoryCard.vue`（记忆条目展示）、`LogTable.vue`（日志表格） | Mia | - |
+| M2-08 | 在 M2 完成后输出《M2 阶段研发执行报告》，内容包含：各工作条目完成情况、验收标准达成情况、遗留问题清单及对后续里程碑的影响评估 | Mia | - |
+
+**验收标准**
+
+| 编号 | 验收标准 |
+| --- | --- |
+| M2-AC-01 | 浏览器可正常访问 Web 管理界面，路由导航正常（`/`、`/memories`、`/logs`、`/feedback`、`/inputs`、`/inputs/:input_id`） |
+| M2-AC-02 | 记忆查询页面能正确展示查询结果，展示分层配额来源（满足 FR-UI-001） |
+| M2-AC-03 | 点击删除按钮后，目标记忆从列表中消失，且后端已确认删除（满足 FR-UI-002） |
+| M2-AC-04 | 存储操作日志页面和查询操作日志页面能正确展示各自的日志列表（满足 FR-UI-003, FR-UI-004） |
+| M2-AC-05 | 反馈记录页面能正确展示历次关联反馈记录（input_id、memory_id、valuable、created_at）及按 memory_id/input_id 筛选功能（满足 FR-UI-005） |
+| M2-AC-06 | 输入信息列表与详情页面能正确展示输入记录、关联记忆及关联评分（满足 FR-UI-007, FR-UI-008） |
+| M2-AC-07 | 分级存储统计面板能正确展示热/冷层数量、内存占用和磁盘占用数据 |
+| M2-AC-08 | 所有与后端的 API 调用均使用统一 Axios 实例，错误状态（4xx/5xx）有明确的界面提示 |
+| M2-AC-09 | 界面数据正确性验证：记忆查询页面展示的 `content` 字段与后端存储的原始输入一致；存储/查询/反馈操作完成后，各日志页面新增的记录内容与操作参数一致 |
+| M2-AC-10 | M2 阶段研发执行报告已输出，各工作条目均有明确的完成状态记录 |
+
+---
+
+#### 12.2.3 M3 — 单元测试就绪
+
+**目标**：完成后端和前端的单元测试研发，覆盖所有核心业务逻辑和接口，确保各模块行为符合设计预期，测试覆盖率达到项目要求。
+
+**工作内容**
+
+| 编号 | 工作内容 | 负责人 | 技术工具 |
+| --- | --- | --- | --- |
+| M3-01 | 设计后端单元测试方案，明确测试模块清单和覆盖目标 | Sparrow | - |
+| M3-02 | 实现 `MemoryService` 单元测试：存储、统一查询（分层配额检索）、层间迁移 | Sparrow | pytest, pytest-asyncio, httpx |
+| M3-03 | 实现 `TierManager` 单元测试：启动时热层加载、超限降级、容量统计 | Sparrow | pytest, pytest-asyncio |
+| M3-04 | 实现 `FeedbackService` 单元测试：价值分更新边界（0.0~1.0）、Feedback 日志写入、迁移触发条件 | Sparrow | pytest, pytest-asyncio |
+| M3-05 | 实现 `DiskManager` 单元测试：淘汰触发条件、168 小时保护规则、淘汰顺序验证 | Sparrow | pytest, pytest-asyncio |
+| M3-06 | 实现 `LogService` 单元测试：存储日志写入和查询日志写入 | Sparrow | pytest, pytest-asyncio |
+| M3-07 | 实现 REST API 接口集成测试：全部接口路径的正常场景和异常场景（含 Pydantic 校验） | Sparrow | pytest, httpx |
+| M3-08 | 设计前端单元测试方案，明确测试组件清单和覆盖目标 | Sparrow | - |
+| M3-09 | 实现前端组件单元测试：`MemoryCard.vue`、`LogTable.vue` 等公共组件 | Sparrow | Vitest, Vue Test Utils |
+| M3-10 | 实现前端视图单元测试：`MemoriesView`、`LogsView`、`FeedbackView` 核心交互逻辑 | Sparrow | Vitest, @testing-library/vue |
+| M3-11 | 生成并审核测试覆盖率报告（coverage.py + Vitest coverage） | Sparrow | coverage.py, Vitest |
+| M3-12 | 在 M3 完成后输出《单元测试报告》，内容包含：测试模块清单与测试用例清单、各用例执行结果（通过/失败）、后端和前端覆盖率数据、发现的缺陷清单（含严重等级）及修复状态、测试结论（是否满足覆盖率要求） | Sparrow | - |
+
+**验收标准**
+
+| 编号 | 验收标准 |
+| --- | --- |
+| M3-AC-01 | 所有后端单元测试通过（`pytest` 执行结果无 FAILED / ERROR） |
+| M3-AC-02 | 所有前端单元测试通过（`vitest run` 执行结果无 FAIL） |
+| M3-AC-03 | 后端测试覆盖率（语句覆盖）不低于 80%（由 `coverage.py` 报告验证） |
+| M3-AC-04 | 前端测试覆盖率（语句覆盖）不低于 80%（由 Vitest coverage 报告验证） |
+| M3-AC-05 | `MemoryService` 的存储路径有明确的响应时间断言，验证性能不超过配置的响应时间阈值；测试环境中可通过将配置阈值设置为更宽松的值（如 1000ms）以提高可行性，正式验收以默认配置值（100ms）为准 |
+| M3-AC-06 | `DiskManager` 的 168 小时保护规则有专项测试用例，验证受保护记忆不被淘汰 |
+| M3-AC-07 | `FeedbackService` 的 total_association_score 计算逻辑（COALESCE(SUM,0)）及层迁移触发条件有专项测试用例 |
+| M3-AC-08 | REST API 的非法输入场景（缺少必填参数、类型错误等）有测试用例，验证返回 422 状态码 |
+| M3-AC-09 | 记忆数据正确性测试：`MemoryService` 存储和查询测试中包含内容正确性断言，验证查询返回的 `content` 字段与存储时的输入完全一致 |
+| M3-AC-10 | 日志内容正确性测试：`LogService` 和 `FeedbackService` 测试中验证各日志字段内容正确——存储日志的 memory_id、content、created_at；查询日志的 query、results；Feedback 日志的 memory_id、valuable、created_at 均与操作输入一致 |
+| M3-AC-11 | 单元测试报告已输出，包含测试模块清单、执行结果汇总、覆盖率数据和问题清单 |
+
+---
+
+#### 12.2.4 M4 — 部署配置就绪
+
+**目标**：完成本机直接运行的部署配置，使系统可以通过单条命令在 macOS 和 Windows 上完成一键部署，并支持操作系统重启后自动恢复运行（无需 Docker）。
+
+**工作内容**
+
+| 编号 | 工作内容 | 负责人 | 关联需求 |
+| --- | --- | --- | --- |
+| M4-01 | 在 `backend/src/air_memory/main.py` 中新增 `StaticFiles` 挂载逻辑：从 `STATIC_DIR` 环境变量指定的目录（默认 `../frontend/dist`）挂载前端静态文件，并配置 SPA 路由回退（`index.html`）| Neo | FR-DEP-001, FR-DEP-002 |
+| M4-02 | 构建前端 Vue.js 3 应用（`npm run build`），将 `frontend/dist/` 预构建产物提交到仓库，确保用户无需安装 Node.js 即可运行系统 | Mia | FR-DEP-001, FR-DEP-002 |
+| M4-03 | 更新后端服务默认监听端口为 8080（或通过 `PORT` 环境变量配置），取消对 Nginx 反向代理的依赖 | Neo | FR-DEP-003 |
+| M4-04 | 编写一键启动脚本（macOS/Linux: `start.sh`；Windows: `start.bat`）：自动检测 Python 3.11+、创建虚拟环境（`.venv`）、安装 Python 依赖、配置环境变量、启动 uvicorn | Neo | FR-DEP-003 |
+| M4-05 | 在启动脚本中集成自启动安装选项：macOS 生成并注册 `~/Library/LaunchAgents/com.air-memory.plist`；Windows 通过 `schtasks` 创建 Task Scheduler 任务；用户可按需选择是否安装 | Neo | FR-DEP-004 |
+| M4-06 | 更新环境变量配置说明文档（`doc/env_config.md`），新增 `STATIC_DIR`、`PORT`、`HF_HOME` 等新配置项 | Neo | PR-001, PR-004~011 |
+| M4-07 | 在 M4 完成后输出《M4 阶段研发执行报告》，内容包含：各工作条目完成情况、验收标准达成情况、遗留问题清单及对后续里程碑的影响评估 | Neo | - |
+
+**验收标准**
+
+| 编号 | 验收标准 |
+| --- | --- |
+| M4-AC-01 | 执行一键启动命令（`bash start.sh` 或 `start.bat`）后，服务正常启动，浏览器可访问 `http://localhost:8080` |
+| M4-AC-02 | 浏览器访问 `http://localhost:8080` 可正常打开 Web 管理界面，API 请求正常（满足 FR-DEP-001, FR-DEP-002） |
+| M4-AC-03 | 操作系统重启后，通过自启动机制（LaunchAgent 或 Task Scheduler）服务自动恢复运行，数据不丢失（满足 FR-DEP-004） |
+| M4-AC-04 | 进程停止后重新启动，已存储的记忆数据和日志数据仍可正常访问（本地 `./data/` 目录持久化验证） |
+| M4-AC-05 | 首次启动时 Embedding 模型自动从 HuggingFace Hub 下载并缓存至 `./models/`，后续重启无需再次联网 |
+| M4-AC-06 | 所有性能阈值（响应时间阈值、内存预算、磁盘水位、新记忆保护时长）通过环境变量暴露，可在不修改代码的情况下直接调整配置值 |
+| M4-AC-07 | M4 阶段研发执行报告已输出，各工作条目均有明确的完成状态记录 |
+
+---
+
+#### 12.2.5 M5 — 文档就绪
+
+**目标**：完成面向人类用户的部署手册和用户手册，确保非技术人员能够按照手册完成系统部署和日常使用。
+
+**工作内容**
+
+| 编号 | 工作内容 | 负责人 | 关联需求 |
+| --- | --- | --- | --- |
+| M5-01 | 编写部署手册：环境前提（Python 安装要求）、macOS 部署步骤、Windows 部署步骤、启动验证方法、自启动安装说明 | Nia | FR-DOC-001 |
+| M5-02 | 编写用户手册：Web 管理界面使用说明（记忆查询/删除/日志查看/价值评分查看/输入信息管理）；AI Agent 接口调用说明（MCP 和 REST API） | Nia | FR-DOC-002 |
+
+**验收标准**
+
+| 编号 | 验收标准 |
+| --- | --- |
+| M5-AC-01 | 部署手册覆盖 macOS 和 Windows 两个平台的完整部署步骤（满足 FR-DOC-001） |
+| M5-AC-02 | 部署手册包含：运行环境前提（Python 版本要求）、一键部署命令、部署后验证步骤及自启动安装说明 |
+| M5-AC-03 | 用户手册覆盖 Web 管理界面全部功能的操作说明（满足 FR-DOC-002） |
+| M5-AC-04 | 用户手册包含 AI Agent 接口的调用示例（含 MCP 工具列表和 REST API 示例请求） |
+| M5-AC-05 | 文档内容与 M4 完成后的实际部署流程一致，不存在过期的命令或截图 |
+
+---
+
+#### 12.2.6 M6 — 系统确认完成
+
+**目标**：对已完成的完整系统（后端 + 前端 + 部署 + 文档）执行全面的功能验证和性能验证，确认系统满足 SRD v1.3 所有需求，输出系统确认报告。
+
+**工作内容**
+
+| 编号 | 工作内容 | 负责人 |
+| --- | --- | --- |
+| M6-01 | 依据 SRD v1.3 和用户手册制定系统确认方案，明确每条需求的验证方法和通过标准 | Wii |
+| M6-02 | 执行部署需求确认（FR-DEP-001~004）：在 macOS 和 Windows 上按部署手册完成部署并验证自启动 | Wii |
+| M6-03 | 执行 AI Agent 接口需求确认（FR-API-001~003, FR-API-006~008）：通过 REST API 验证记忆存储、查询、反馈、输入信息关联与分级迁移功能 | Wii |
+| M6-04 | 执行 Web UI 需求确认（FR-UI-001~008）：按用户手册操作所有管理界面功能并验证结果正确性 | Wii |
+| M6-05 | 执行文档需求确认（FR-DOC-001~002）：验证部署手册和用户手册的完整性和准确性 | Wii |
+| M6-06 | 执行性能需求确认：使用工具测量记忆存储的端到端响应时间，验证不超过配置的响应时间阈值（默认 100ms，满足 PR-001） | Wii |
+| M6-07 | 执行资源占用确认：在本机运行时验证内存占用不超过配置的内存上限（默认 8GB，满足 PR-004）、磁盘占用不超过配置的磁盘上限（默认 40GB，满足 PR-005） | Wii |
+| M6-08 | 执行记忆数据正确性确认：通过 AI Agent 接口存储若干记忆，验证查询返回的 `content` 与存储时一致；重启系统后验证已存储记忆不丢失（满足 FR-API-002, FR-API-003） | Wii |
+| M6-09 | 执行日志与输入信息内容正确性确认：执行存储/查询/反馈操作后，通过 Web UI 验证日志字段和输入信息详情字段（时间戳、内容、参数值、关联评分）与实际操作一致（满足 FR-UI-003, FR-UI-004, FR-UI-005, FR-UI-007, FR-UI-008） | Wii |
+| M6-10 | 汇总所有验证结果，输出《系统确认报告》（验收报告），内容包含：需求验证矩阵（每条 SRD 需求的验证方法、实测结果和验证状态）、性能实测数据（响应时间、资源占用）、发现的缺陷清单（含严重等级）、最终验收结论（通过/有条件通过/不通过） | Wii |
+
+**验收标准**
+
+| 编号 | 验收标准 |
+| --- | --- |
+| M6-AC-01 | SRD v1.3 全部 31 条需求（FR-DEP-001~004、FR-API-001~003、FR-API-006~008、FR-UI-001~008、FR-DOC-001~002、PR-001~002、PR-004~011）均经过验证，无"未验证"状态的需求条目 |
+| M6-AC-02 | 部署手册操作步骤可在 macOS 和 Windows 上完整执行，部署结果与手册描述一致（FR-DEP-001, FR-DEP-002） |
+| M6-AC-03 | 系统重启后所有服务自动恢复运行，数据无丢失（FR-DEP-004） |
+| M6-AC-04 | 记忆存储端到端响应时间实测不超过配置的响应时间阈值（默认 100ms，满足 PR-001） |
+| M6-AC-05 | 记忆查询接口端到端响应时间无硬性限制，应尽力在合理时间内返回（满足 PR-002） |
+| M6-AC-06 | 系统运行时内存占用实测不超过配置的内存上限（默认 8GB，满足 PR-004） |
+| M6-AC-07 | 系统磁盘占用实测不超过配置的磁盘上限（默认 40GB），DiskManager 在超过触发水位时能正确触发淘汰（满足 PR-005, PR-009） |
+| M6-AC-08 | Web 管理界面所有功能经验证均与用户手册描述一致（满足 FR-UI-001~008） |
+| M6-AC-09 | 记忆数据正确性经验证：查询返回的 `content` 字段与原始存储内容一致；系统重启后已存储记忆不丢失 |
+| M6-AC-10 | 日志内容正确性经验证：操作日志和 Feedback 日志的各字段内容（时间戳、记忆内容、查询参数、反馈结果）与实际操作一致，历史记录完整 |
+| M6-AC-11 | 系统确认报告（验收报告）已输出，包含需求验证矩阵、性能实测数据、缺陷清单和最终验收结论；无严重（Critical）级别的未修复缺陷 |
+| M6-AC-12 | 若有非严重缺陷，需记录在报告中并由项目经理决策是否放行 |
+
+---
+
+## 13. 需求分配
+
+本章将系统需求文档（`/doc/srd_v1.3.md`）中的所有需求条目分配到具体的架构组件和实现模块，建立需求与架构之间的追踪关系。
+
+### 13.1 功能需求分配
+
+#### 13.1.1 部署与运行环境需求
+
+| 需求编号 | 需求简述 | 负责架构组件 | 实现模块 |
+| --- | --- | --- | --- |
+| FR-DEP-001 | macOS 本地部署 | Python 本机直接运行 + FastAPI StaticFiles | `start.sh`、`backend/src/air_memory/main.py`（StaticFiles 挂载）|
+| FR-DEP-002 | Windows 本地部署 | Python 本机直接运行 + FastAPI StaticFiles | `start.bat`、`backend/src/air_memory/main.py`（StaticFiles 挂载）|
+| FR-DEP-003 | 一键部署 | Python 本机直接运行 | `start.sh` / `start.bat`（自动创建 venv、安装依赖、启动服务）|
+| FR-DEP-004 | 系统自启动 | macOS LaunchAgent / Windows Task Scheduler | `start.sh --install` / `start.bat /install`（写入系统自启动配置）|
+| FR-DEP-005 | 旧版本数据自动升级 | DataMigrationManager | `data_migration.py` |
+
+#### 13.1.2 AI Agent 接口需求
+
+| 需求编号 | 需求简述 | 负责架构组件 | 实现模块 |
+| --- | --- | --- | --- |
+| FR-API-001 | AI Agent 接口 | MCP Server + REST API | `backend/src/air_memory/mcp/server.py`、`backend/src/air_memory/api/` |
+| FR-API-002 | 记忆存储接口 | MemoryService + REST API / MCP | `memory/service.py`（`save()`）、`api/memory.py`（`POST /memories`）、`mcp/server.py`（`save_memory`）|
+| FR-API-003 | 记忆查询接口 | MemoryService + REST API / MCP | `memory/service.py`（`query()`，统一执行溢出填充分层配额检索：关联≤5，热层≤(8−关联实际数)，冷层补齐至10，总数≤10）、`api/memory.py`（`GET /memories`）、`mcp/server.py`（`query_memory`）|
+| FR-API-006 | 记忆价值反馈接口 | FeedbackService + REST API / MCP | `feedback/service.py`（`submit()`）、`api/memory.py`（`POST /memories/{id}/feedback`）、`mcp/server.py`（`feedback_memory`）|
+| FR-API-007 | 输入信息关联驱动分级迁移 | FeedbackService + TierManager | `feedback/service.py`（`_maybe_migrate()`：total_score > 0 且不在热层则升入热层；total_score == 0 且在热层则降入冷层）、`memory/tier_manager.py`（`_promote()`、`_demote()`）|
+| FR-API-008 | 输入信息关联生命周期管理 | MemoryService + FeedbackService + SQLite | `memory/service.py`（输入信息关联检索）、`feedback/service.py`（关联评分增减与移除）、`input_memory_links` 表 |
+
+#### 13.1.3 Web 管理界面需求
+
+| 需求编号 | 需求简述 | 负责架构组件 | 实现模块 |
+| --- | --- | --- | --- |
+| FR-UI-001 | 记忆数据查询 | Vue.js 3 前端 + REST API | `frontend/src/views/MemoriesView.vue`、`GET /api/v1/memories` |
+| FR-UI-002 | 记忆数据删除 | Vue.js 3 前端 + REST API | `frontend/src/views/MemoriesView.vue`、`DELETE /api/v1/memories/{id}` |
+| FR-UI-003 | 存储操作日志查看 | Vue.js 3 前端 + LogService + REST API | `frontend/src/views/LogsView.vue`、`GET /api/v1/logs/save`、`log/service.py` |
+| FR-UI-004 | 查询操作日志查看 | Vue.js 3 前端 + LogService + REST API | `frontend/src/views/LogsView.vue`、`GET /api/v1/logs/query`、`log/service.py` |
+| FR-UI-005 | 关联反馈记录查看 | Vue.js 3 前端 + FeedbackService + REST API | `frontend/src/views/FeedbackView.vue`、`GET /api/v1/memories/{id}/feedback/logs`、`feedback/service.py`（`get_feedback_logs()`）；全局反馈记录列表：`GET /api/v1/logs/feedback`（`api/logs.py`）、`feedback/service.py`（`get_all_feedback_logs()`）|
+| FR-UI-007 | 输入信息管理列表 | Vue.js 3 前端 + FeedbackService + REST API | `frontend/src/views/InputsView.vue`、`GET /api/v1/inputs`、`feedback/service.py`（`list_inputs()`） |
+| FR-UI-008 | 输入信息详情查看 | Vue.js 3 前端 + FeedbackService + REST API | `frontend/src/views/InputDetailView.vue`、`GET /api/v1/inputs/{input_id}`、`feedback/service.py`（`get_input_detail()`） |
+
+#### 13.1.4 文档需求
+
+| 需求编号 | 需求简述 | 负责架构组件 | 负责人 |
+| --- | --- | --- | --- |
+| FR-DOC-001 | 部署手册 | 无（文档交付物） | Nia |
+| FR-DOC-002 | 用户手册 | 无（文档交付物） | Nia |
+
+---
+
+### 13.2 性能需求分配
+
+#### 13.2.1 响应时间需求
+
+| 需求编号 | 需求简述 | 负责架构组件 | 关键设计决策 |
+| --- | --- | --- | --- |
+| PR-001 | 记忆存储响应时间 ≤ 100ms | MemoryService + sentence-transformers + 冷层 ChromaDB | 服务启动预热 Embedding 模型；日志写入异步执行（`asyncio.create_task`）；FastAPI 全程 async/await |
+| PR-002 | 记忆查询无硬性时间限制 | MemoryService + 热层/冷层 ChromaDB | 统一执行溢出填充配额检索（`asyncio.gather`）；结果合并去重；典型耗时 100～500ms |
+
+#### 13.2.2 资源占用需求
+
+| 需求编号 | 需求简述 | 负责架构组件 | 关键设计决策 |
+| --- | --- | --- | --- |
+| PR-004 | 系统内存占用 ≤ 8GB | TierManager | 热层预算上限 ~6GB；基础运行时 ~2GB；TierManager 动态监控并在超限时降级热层记忆 |
+| PR-005 | 系统磁盘占用 ≤ 40GB | DiskManager | 触发水位 38GB；安全水位 35GB；超限时自动淘汰低价值最旧记忆 |
+
+#### 13.2.3 分级存储需求
+
+| 需求编号 | 需求简述 | 负责架构组件 | 关键设计决策 |
+| --- | --- | --- | --- |
+| PR-006 | 分级存储机制 | MemoryService + 热层/冷层 ChromaDB | 冷层（PersistentClient）持有所有记忆；热层（EphemeralClient）是 input_memory_links 中存在关联记录（total_association_score > 0）的记忆的内存缓存；新记忆初始进入冷层 |
+| PR-007 | 高速存储层加载策略 | TierManager | 服务启动时通过 LEFT JOIN input_memory_links 计算 total_association_score，将所有 total_association_score > 0 的记忆按 total_association_score DESC 排序批量加载至热层，至内存预算上限 |
+| PR-008 | 高速存储层容量管理 | TierManager | 热层超预算时，将 total_association_score 最低的热层记忆降级至冷层（`_demote()`） |
+
+#### 13.2.4 磁盘容量管理需求
+
+| 需求编号 | 需求简述 | 负责架构组件 | 关键设计决策 |
+| --- | --- | --- | --- |
+| PR-009 | 磁盘淘汰触发条件 | DiskManager | 每小时定期执行 `check_and_evict()`；在磁盘占用超过 38GB 时触发淘汰 |
+| PR-010 | 磁盘淘汰策略 | DiskManager | 候选集排序：`total_association_score ASC, created_at ASC`（通过 LEFT JOIN input_memory_links 计算）；循环删除直至磁盘占用降至 35GB 安全水位 |
+| PR-011 | 168 小时新记忆保护 | DiskManager | 候选集过滤条件：`created_at < datetime('now', '-168 hours')`；168 小时内记忆不参与淘汰 |
+
+---
+
+### 13.3 需求覆盖度总览
+
+```mermaid
+graph LR
+    subgraph SRD["SRD v1.3 需求"]
+        DEP["FR-DEP-001~004<br/>部署需求"]
+        API["FR-API-001~003, FR-API-006~008<br/>AI Agent 接口需求"]
+        UI["FR-UI-001~008<br/>Web UI 需求"]
+        DOC["FR-DOC-001~002<br/>文档需求"]
+        PR["PR-001~002, PR-004~011<br/>性能需求"]
+    end
+
+    subgraph SAD["架构组件"]
+        Deploy["Python 本机直接运行<br/>FastAPI + StaticFiles<br/>（§9 部署架构）"]
+        MCPRest["MCP Server + REST API<br/>（§5.1.2, §5.1.3, §7）"]
+        MemSvc["MemoryService<br/>（§5.1.4）"]
+        FeedSvc["FeedbackService<br/>（§5.1.5）"]
+        TierMgr["TierManager<br/>（§5.1.4）"]
+        DiskMgr["DiskManager<br/>（§5.1.6）"]
+        LogSvc["LogService<br/>（§5.1.7）"]
+        Frontend["Vue.js 3 前端<br/>（§5.2）"]
+        Docs["项目文档<br/>（Nia 负责）"]
+    end
+
+    DEP --> Deploy
+    API --> MCPRest
+    API --> MemSvc
+    API --> FeedSvc
+    UI --> Frontend
+    UI --> LogSvc
+    UI --> FeedSvc
+    DOC --> Docs
+    PR --> MemSvc
+    PR --> TierMgr
+    PR --> DiskMgr
+```
