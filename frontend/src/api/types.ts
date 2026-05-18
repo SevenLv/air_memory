@@ -96,3 +96,32 @@ export interface FeedbackLogsWithTotalResponse {
   count: number
   total: number
 }
+
+/** 输入信息条目 */
+export interface InputInfo {
+  input_id: string
+  query: string
+  created_at: string
+}
+
+/** 输入信息管理列表响应 */
+export interface InputsListResponse {
+  inputs: InputInfo[]
+  count: number
+  total: number
+}
+
+/** 输入信息关联记忆条目 */
+export interface InputMemoryLink {
+  memory_id: string
+  association_score: number
+  total_association_score: number
+}
+
+/** 输入信息详情 */
+export interface InputDetail {
+  input_id: string
+  query: string
+  created_at: string
+  memories: InputMemoryLink[]
+}

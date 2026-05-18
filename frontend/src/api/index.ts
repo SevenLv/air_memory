@@ -11,6 +11,8 @@ import type {
   AppVersion,
   FeedbackLogsWithTotalResponse,
   SaveLog,
+  InputDetail,
+  InputsListResponse,
 } from './types'
 
 /** 统一 Axios 实例 */
@@ -128,5 +130,29 @@ export async function getAllFeedbackLogs(params: {
       page_size: params.pageSize,
     },
   })
+  return res.data
+}
+
+/** 获取输入信息列表（支持时间段过滤和分页） */
+export async function getInputs(params: {
+  startTime?: string
+  endTime?: string
+  page?: number
+  pageSize?: number
+}): Promise<InputsListResponse> {
+  const res = await apiClient.get<InputsListResponse>('/inputs', {
+    params: {
+      start_time: params.startTime || undefined,
+      end_time: params.endTime || undefined,
+      page: params.page,
+      page_size: params.pageSize,
+    },
+  })
+  return res.data
+}
+
+/** 获取输入信息详情 */
+export async function getInputDetail(inputId: string): Promise<InputDetail> {
+  const res = await apiClient.get<InputDetail>(`/inputs/${inputId}`)
   return res.data
 }

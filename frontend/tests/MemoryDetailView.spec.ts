@@ -6,21 +6,21 @@ import MemoryDetailView from '../src/views/MemoryDetailView.vue'
 const back = vi.fn()
 
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ params: { memoryId: 'mem-001' } }),
+  useRoute: () => ({ params: { memoryId: 'mem-001%3Apart' } }),
   useRouter: () => ({ back }),
 }))
 
 vi.mock('../src/api', () => ({
   getSaveLog: vi.fn().mockResolvedValue({
     id: 1,
-    memory_id: 'mem-001',
+    memory_id: 'mem-001:part',
     content: '这是一条原始记忆',
     created_at: '2026-04-15T03:00:00Z',
     memory_deleted: false,
     is_garbled: false,
   }),
   getValueScore: vi.fn().mockResolvedValue({
-    memory_id: 'mem-001',
+    memory_id: 'mem-001:part',
     value_score: 0.75,
     tier: 'hot',
     feedback_count: 3,
@@ -33,13 +33,15 @@ describe('MemoryDetailView 视图', () => {
   })
 
   it('显示记忆详情完整字段', async () => {
+    const { getSaveLog } = await import('../src/api')
     const wrapper = mount(MemoryDetailView, {
       global: { plugins: [ElementPlus] },
     })
     await flushPromises()
 
+    expect(getSaveLog).toHaveBeenCalledWith('mem-001:part')
     expect(wrapper.text()).toContain('记忆详情')
-    expect(wrapper.text()).toContain('mem-001')
+    expect(wrapper.text()).toContain('mem-001:part')
     expect(wrapper.text()).toContain('这是一条原始记忆')
     expect(wrapper.text()).toContain('价值评分')
     expect(wrapper.text()).toContain('0.7500')
