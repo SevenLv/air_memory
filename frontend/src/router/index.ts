@@ -2,6 +2,8 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 import MemoriesView from '../views/MemoriesView.vue'
 import MemoryDetailView from '../views/MemoryDetailView.vue'
+import InputsView from '../views/InputsView.vue'
+import InputDetailView from '../views/InputDetailView.vue'
 import LogsView from '../views/LogsView.vue'
 import FeedbackView from '../views/FeedbackView.vue'
 
@@ -22,6 +24,16 @@ const router = createRouter({
       path: '/memories/:memoryId',
       name: 'memory-detail',
       component: MemoryDetailView,
+    },
+    {
+      path: '/inputs',
+      name: 'inputs',
+      component: InputsView,
+    },
+    {
+      path: '/inputs/:inputId',
+      name: 'input-detail',
+      component: InputDetailView,
     },
     {
       path: '/logs',

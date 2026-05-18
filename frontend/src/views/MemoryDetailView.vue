@@ -79,7 +79,7 @@ function toSaveLog(value: unknown): SaveLog | null {
 }
 
 async function fetchDetail(): Promise<void> {
-  const memoryId = String(route.params.memoryId || '')
+  const memoryId = decodeURIComponent(String(route.params.memoryId || ''))
   if (!memoryId) {
     detail.value = null
     return

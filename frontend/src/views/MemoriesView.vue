@@ -175,7 +175,8 @@ function handlePageChange(page: number): void {
 function handleRowClick(row: SaveLog): void {
   const memoryState = { ...row }
   router.push({
-    path: `/memories/${encodeURIComponent(row.memory_id)}`,
+    name: 'memory-detail',
+    params: { memoryId: row.memory_id },
     state: { memory: memoryState },
   })
 }

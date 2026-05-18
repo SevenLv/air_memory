@@ -29,6 +29,10 @@
             <el-icon><Star /></el-icon>
             <span>反馈记录</span>
           </el-menu-item>
+          <el-menu-item index="/inputs">
+            <el-icon><List /></el-icon>
+            <span>输入信息管理</span>
+          </el-menu-item>
         </el-menu>
       </el-aside>
       <!-- 主内容区 -->
@@ -41,7 +45,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { House, DataLine, Document, Star } from '@element-plus/icons-vue'
+import { House, DataLine, Document, Star, List } from '@element-plus/icons-vue'
 import { getVersion } from './api/index'
 
 const appVersion = ref<string>('')
