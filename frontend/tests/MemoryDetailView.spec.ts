@@ -17,13 +17,8 @@ vi.mock('../src/api', () => ({
     content: '这是一条原始记忆',
     created_at: '2026-04-15T03:00:00Z',
     memory_deleted: false,
+    total_association_score: 0.75,
     is_garbled: false,
-  }),
-  getValueScore: vi.fn().mockResolvedValue({
-    memory_id: 'mem-001:part',
-    value_score: 0.75,
-    tier: 'hot',
-    feedback_count: 3,
   }),
 }))
 
