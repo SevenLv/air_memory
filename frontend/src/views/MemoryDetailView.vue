@@ -35,7 +35,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getSaveLog, getValueScore } from '../api'
+import { getSaveLog } from '../api'
 import type { SaveLog } from '../api/types'
 import { formatLocalTime } from '../utils/time'
 
@@ -44,13 +44,13 @@ const router = useRouter()
 
 const loading = ref(false)
 const detail = ref<SaveLog | null>(null)
-const valueScore = ref<number | null>(null)
 
 const valueScoreText = computed(() => {
-  if (valueScore.value === null) {
+  const score = detail.value?.total_association_score ?? detail.value?.value_score ?? null
+  if (score === null) {
     return '暂无'
   }
-  return valueScore.value.toFixed(4)
+  return score.toFixed(4)
 })
 
 function toSaveLog(value: unknown): SaveLog | null {
@@ -74,6 +74,9 @@ function toSaveLog(value: unknown): SaveLog | null {
     content: v.content,
     created_at: v.created_at,
     memory_deleted: v.memory_deleted,
+    total_association_score:
+      typeof v.total_association_score === 'number' ? v.total_association_score : null,
+    value_score: typeof v.value_score === 'number' ? v.value_score : null,
     is_garbled: v.is_garbled,
   }
 }
@@ -94,10 +97,6 @@ async function fetchDetail(): Promise<void> {
   try {
     if (!detail.value) {
       detail.value = await getSaveLog(memoryId)
-    }
-    if (detail.value && !detail.value.memory_deleted) {
-      const scoreRes = await getValueScore(memoryId)
-      valueScore.value = scoreRes.value_score
     }
   } catch {
     detail.value = null
