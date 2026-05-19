@@ -13,12 +13,11 @@ export const useMemoryStore = defineStore('memory', () => {
   /** 查询记忆列表 */
   async function fetchMemories(
     query: string,
-    topK: number = 5,
-    fastOnly: boolean = false,
+    topK: number = 10,
   ): Promise<void> {
     loading.value = true
     try {
-      const res = await queryMemories(query, topK, fastOnly)
+      const res = await queryMemories(query, topK)
       memories.value = res.memories
       count.value = res.count
       queryMode.value = res.query_mode

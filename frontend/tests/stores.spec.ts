@@ -65,9 +65,17 @@ describe('useMemoryStore', () => {
   it('fetchMemories 成功后更新 memories 列表', async () => {
     const { useMemoryStore } = await import('../src/stores/memory')
     const store = useMemoryStore()
-    await store.fetchMemories('测试查询', 5, false)
+    await store.fetchMemories('测试查询', 5)
     expect(store.memories).toHaveLength(2)
     expect(store.memories[0].id).toBe('mem-001')
+  })
+
+  it('fetchMemories 默认返回 10 条上限参数', async () => {
+    const { queryMemories } = await import('../src/api')
+    const { useMemoryStore } = await import('../src/stores/memory')
+    const store = useMemoryStore()
+    await store.fetchMemories('测试查询')
+    expect(queryMemories).toHaveBeenCalledWith('测试查询', 10)
   })
 
   it('fetchMemories 成功后更新 count', async () => {

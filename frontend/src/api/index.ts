@@ -5,7 +5,6 @@ import type {
   SaveLogsResponse,
   QueryLogsResponse,
   FeedbackLogsResponse,
-  MemoryValueScore,
   TierStats,
   DiskStats,
   AppVersion,
@@ -44,11 +43,10 @@ export default apiClient
 /** 查询记忆 */
 export async function queryMemories(
   query: string,
-  topK: number = 5,
-  fastOnly: boolean = false,
+  topK: number = 10,
 ): Promise<MemoryQueryResponse> {
   const res = await apiClient.get<MemoryQueryResponse>('/memories', {
-    params: { query, top_k: topK, fast_only: fastOnly },
+    params: { query, top_k: topK },
   })
   return res.data
 }
@@ -86,12 +84,6 @@ export async function getFeedbackLogs(
     `/memories/${memoryId}/feedback/logs`,
     { params: { page, page_size: pageSize } },
   )
-  return res.data
-}
-
-/** 获取指定记忆的价值评分 */
-export async function getValueScore(memoryId: string): Promise<MemoryValueScore> {
-  const res = await apiClient.get<MemoryValueScore>(`/memories/${memoryId}/value-score`)
   return res.data
 }
 
