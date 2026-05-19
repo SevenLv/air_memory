@@ -62,14 +62,6 @@ export interface FeedbackLogsResponse {
   count: number
 }
 
-/** 记忆价值评分 */
-export interface MemoryValueScore {
-  memory_id: string
-  value_score: number
-  tier: string
-  feedback_count: number
-}
-
 /** 热/冷层分级存储统计 */
 export interface TierStats {
   hot_count: number

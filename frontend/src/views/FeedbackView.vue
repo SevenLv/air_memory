@@ -40,34 +40,6 @@
       </el-form>
     </el-card>
 
-    <!-- 价值评分面板（仅当按记忆 ID 查询时显示） -->
-    <el-card v-if="valueScore" class="value-card">
-      <template #header>
-        <span class="card-title">综合价值评分</span>
-      </template>
-      <el-descriptions :column="2" border>
-        <el-descriptions-item label="记忆 ID">
-          {{ valueScore.memory_id }}
-        </el-descriptions-item>
-        <el-descriptions-item label="所在层">
-          <el-tag :type="valueScore.tier === 'hot' ? 'danger' : 'info'">
-            {{ valueScore.tier === 'hot' ? '热层' : '冷层' }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="综合价值评分">
-          <el-progress
-            :percentage="Math.round(valueScore.value_score * 100)"
-            :color="scoreColor(valueScore.value_score)"
-            style="width: 200px"
-          />
-          <span class="score-text">{{ valueScore.value_score.toFixed(4) }}</span>
-        </el-descriptions-item>
-        <el-descriptions-item label="反馈次数">
-          {{ valueScore.feedback_count }}
-        </el-descriptions-item>
-      </el-descriptions>
-    </el-card>
-
     <!-- 反馈记录列表 -->
     <el-card class="logs-card">
       <template #header>
@@ -113,9 +85,9 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { Search, Refresh } from '@element-plus/icons-vue'
-import { getAllFeedbackLogs, getValueScore } from '../api'
+import { getAllFeedbackLogs } from '../api'
 import { formatLocalTime } from '../utils/time'
-import type { FeedbackLog, MemoryValueScore } from '../api/types'
+import type { FeedbackLog } from '../api/types'
 import LogTable from '../components/LogTable.vue'
 
 const form = reactive({
@@ -126,17 +98,9 @@ const form = reactive({
 const loading = ref(false)
 const hasSearched = ref(false)
 const feedbackLogs = ref<FeedbackLog[]>([])
-const valueScore = ref<MemoryValueScore | null>(null)
 const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(20)
-
-/** 根据评分返回进度条颜色 */
-function scoreColor(score: number): string {
-  if (score >= 0.7) return '#67c23a'
-  if (score >= 0.4) return '#e6a23c'
-  return '#f56c6c'
-}
 
 /** 执行查询 */
 async function handleSearch(): Promise<void> {
@@ -149,7 +113,6 @@ function handleReset(): void {
   form.memoryId = ''
   form.dateRange = null
   feedbackLogs.value = []
-  valueScore.value = null
   total.value = 0
   hasSearched.value = false
   currentPage.value = 1
@@ -172,26 +135,14 @@ async function handlePageSizeChange(size: number): Promise<void> {
 async function fetchLogs(): Promise<void> {
   hasSearched.value = true
   loading.value = true
-  valueScore.value = null
   try {
-    const params = {
+    const logsRes = await getAllFeedbackLogs({
       page: currentPage.value,
       pageSize: pageSize.value,
       memoryId: form.memoryId.trim() || undefined,
       startTime: form.dateRange?.[0] || undefined,
       endTime: form.dateRange?.[1] || undefined,
-    }
-    const [logsRes] = await Promise.all([
-      getAllFeedbackLogs(params),
-      // 若指定了记忆 ID，同步查询价值评分
-      form.memoryId.trim()
-        ? getValueScore(form.memoryId.trim()).then((v) => {
-            valueScore.value = v
-          }).catch(() => {
-            // 记忆不存在时静默处理
-          })
-        : Promise.resolve(),
-    ])
+    })
     feedbackLogs.value = logsRes.logs
     total.value = logsRes.total
   } catch {
@@ -216,10 +167,6 @@ onMounted(() => {
   margin-bottom: 20px;
 }
 
-.value-card {
-  margin-bottom: 20px;
-}
-
 .logs-card {
   margin-bottom: 20px;
 }
@@ -233,12 +180,6 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.score-text {
-  margin-left: 8px;
-  font-size: 0.9rem;
-  color: #606266;
 }
 
 .pagination-wrapper {
