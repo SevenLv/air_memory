@@ -8,6 +8,7 @@ import pytest_asyncio
 import aiosqlite
 
 from air_memory.config import settings
+from air_memory.data_migration import DataMigrationManager
 from tests.conftest import insert_input_memory_link
 
 
@@ -288,6 +289,47 @@ class TestIsGarbledFunction:
         """空内容不应被检测为乱码。"""
         from air_memory.log.service import _is_garbled
         assert _is_garbled("") is False
+
+
+class TestQueryLogsLegacySchemaMigration:
+    """测试 legacy query_logs（含 fast_only）升级后的查询日志写入兼容性。"""
+
+    @pytest.mark.asyncio
+    async def test_migrate_legacy_query_logs_and_log_query(self, log_service, db_path):
+        """legacy query_logs.fast_only 不应阻断新版本查询日志写入。"""
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute("DROP TABLE query_logs")
+            await db.execute(
+                """CREATE TABLE query_logs (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    query      TEXT    NOT NULL,
+                    results    TEXT    NOT NULL,
+                    fast_only  INTEGER NOT NULL,
+                    created_at TEXT    NOT NULL
+                )"""
+            )
+            await db.execute(
+                "INSERT INTO query_logs (query, results, fast_only, created_at)"
+                " VALUES (?, ?, ?, ?)",
+                ("legacy-query", "[]", 1, "2026-01-01T00:00:00+00:00"),
+            )
+            await db.commit()
+
+        migration_mgr = DataMigrationManager()
+        await migration_mgr.run_migrations()
+
+        async with aiosqlite.connect(db_path) as db:
+            async with db.execute("PRAGMA table_info(query_logs)") as cursor:
+                cols = {row[1] for row in await cursor.fetchall()}
+        assert "input_id" in cols
+        assert "fast_only" not in cols
+
+        await log_service.log_query("input-001", "new-query", [{"id": "m1"}])
+        logs = await log_service.get_query_logs()
+
+        new_log = next((l for l in logs if l.query == "new-query"), None)
+        assert new_log is not None
+        assert new_log.input_id == "input-001"
 
     def test_mixed_garbled_with_non_ascii(self):
         """含非 ASCII 且高问号比例应被检测为乱码。"""

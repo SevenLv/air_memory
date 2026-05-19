@@ -27,6 +27,7 @@ class DataMigrationManager:
                 ("M001", self._m001_rename_memory_values),
                 ("M002", self._m002_add_input_id_to_query_logs),
                 ("M003", self._m003_add_input_id_to_feedback_logs),
+                ("M004", self._m004_rebuild_query_logs_without_fast_only),
             ]
 
             for migration_id, migration_fn in migrations:
@@ -121,3 +122,41 @@ class DataMigrationManager:
                 _logger.info("M003：feedback_logs.input_id 列已新增")
             else:
                 _logger.info("M003：feedback_logs.input_id 已存在，跳过")
+
+    async def _m004_rebuild_query_logs_without_fast_only(self) -> None:
+        """M004：重建 query_logs，移除 legacy fast_only 列，统一为当前 schema。"""
+        async with aiosqlite.connect(settings.DB_PATH) as db:
+            async with db.execute("PRAGMA table_info(query_logs)") as cursor:
+                col_rows = await cursor.fetchall()
+            if not col_rows:
+                _logger.info("M004：query_logs 表不存在，跳过")
+                return
+
+            cols = {row[1] for row in col_rows}
+            if "fast_only" not in cols:
+                _logger.info("M004：query_logs 无 fast_only 列，跳过")
+                return
+
+            await db.execute(
+                """CREATE TABLE query_logs_new (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    input_id   TEXT,
+                    query      TEXT    NOT NULL,
+                    results    TEXT    NOT NULL,
+                    created_at TEXT    NOT NULL
+                )"""
+            )
+            if "input_id" in cols:
+                await db.execute(
+                    "INSERT INTO query_logs_new (id, input_id, query, results, created_at)"
+                    " SELECT id, input_id, query, results, created_at FROM query_logs"
+                )
+            else:
+                await db.execute(
+                    "INSERT INTO query_logs_new (id, input_id, query, results, created_at)"
+                    " SELECT id, NULL, query, results, created_at FROM query_logs"
+                )
+            await db.execute("DROP TABLE query_logs")
+            await db.execute("ALTER TABLE query_logs_new RENAME TO query_logs")
+            await db.commit()
+            _logger.info("M004：query_logs 已重建为最新 schema（移除 fast_only）")
